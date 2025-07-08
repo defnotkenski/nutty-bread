@@ -186,7 +186,6 @@ Temporary Items
 *.pth
 *.pt
 *.safetensors
-models/
 checkpoints/
 logs/
 tensorboard_logs/

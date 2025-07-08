@@ -8,6 +8,7 @@ from torch.utils.data import Dataset
 from sklearn.preprocessing import StandardScaler
 from datasets.sample_horses_schema import COLUMN_TYPES
 from custom.commons.utils import cleanup_dataframe
+from custom.commons.feature_extractor import FeatureProcessor
 
 
 @dataclass
@@ -31,6 +32,12 @@ def preprocess_df(df_path: Path):
     base_df = base_df.cast(COLUMN_TYPES)
     base_df = base_df.sort(["race_date", "track_code", "race_number", "dollar_odds"])
 
+    # Feature extraction
+    feature_extractor = FeatureProcessor(df=base_df, target_type="place")
+    feature_config = feature_extractor.get_dataframe()
+
+    base_df = feature_config.df
+
     # ===== RACE AWARE: Create race boundaries to be used when batching during training =====
 
     race_boundaries = []
@@ -47,7 +54,7 @@ def preprocess_df(df_path: Path):
     # ===== END RACE AWARE =====
 
     # Create target col
-    base_df = base_df.with_columns(pl.col("official_final_position").is_in([1, 2, 3]).cast(pl.Int64).alias("target"))
+    # base_df = base_df.with_columns(pl.col("official_final_position").is_in([1, 2, 3]).cast(pl.Int64).alias("target"))
 
     # Extract target col
     target_tensor = torch.tensor(base_df["target"].to_numpy(), dtype=torch.float32)
@@ -58,16 +65,19 @@ def preprocess_df(df_path: Path):
     # Extract and scale continuous cols
     scaler = StandardScaler()
 
-    cont_cols = base_df.select(pl.selectors.numeric()).to_numpy()
+    # cont_cols = base_df.select(pl.selectors.numeric()).to_numpy()
+    cont_cols = base_df.select(feature_config.continuous_cols).to_numpy()
+
     cont_cols_scaled = scaler.fit_transform(cont_cols)
 
     # Impute missing data with sentinel value (temporary until solution)
-    cont_cols_sentinel = np.where(np.isnan(cont_cols_scaled), -999, cont_cols_scaled)
+    # cont_cols_sentinel = np.where(np.isnan(cont_cols_scaled), -999, cont_cols_scaled)
 
-    cont_tensor = torch.tensor(cont_cols_sentinel, dtype=torch.float32)
+    cont_tensor = torch.tensor(cont_cols_scaled, dtype=torch.float32)
 
     # Extract categorical cols
-    cat_cols_df = base_df.select(pl.selectors.string(include_categorical=True)).fill_null("<UNK>")
+    # cat_cols_df = base_df.select(pl.selectors.string(include_categorical=True)).fill_null("<UNK>")
+    cat_cols_df = base_df.select(feature_config.categorical_cols).fill_null("<UNK>")
 
     encoded_cats = []
     cat_cardinalities = []
@@ -91,7 +101,7 @@ def preprocess_df(df_path: Path):
     )
 
 
-class CustomTabularDataset(Dataset):
+class SAINTDataset(Dataset):
     def __init__(self, preprocessed_data: PreProcessor):
         self.continuous = preprocessed_data.continuous_tensor
         self.categorical = preprocessed_data.categorical_tensor

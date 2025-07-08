@@ -3,7 +3,7 @@ import torch
 from custom.blocks.attention_blocks import IntraRowAttention, InterRowAttention
 
 
-class TransformerBlock(nn.Module):
+class DualAttentionLayer(nn.Module):
     def __init__(self, d_model: int = 64, dropout: float = 0.1, num_heads: int = 4):
         super().__init__()
 
@@ -12,8 +12,8 @@ class TransformerBlock(nn.Module):
 
         assert d_model % (num_heads // 2) == 0, f"d_model must be divisible by heads per attention"
 
-        self.intra_attention = IntraRowAttention(d_model=d_model, num_heads=num_heads // 2)
-        self.inter_attention = InterRowAttention(d_model=d_model, num_heads=num_heads // 2)
+        self.intra_attention = IntraRowAttention(d_model=d_model, num_heads=num_heads // 2, dropout=dropout)
+        self.inter_attention = InterRowAttention(d_model=d_model, num_heads=num_heads // 2, dropout=dropout)
 
         self.layer_norm_1 = nn.LayerNorm(d_model)
         self.layer_norm_2 = nn.LayerNorm(d_model)

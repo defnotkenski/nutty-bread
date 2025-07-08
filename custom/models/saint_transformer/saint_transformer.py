@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from custom.transformer_block import TransformerBlock
+from custom.layers.dual_attention_layer import DualAttentionLayer
 from torchmetrics import Accuracy, F1Score, AUROC
 import torch.nn.functional as f
 
@@ -10,7 +10,7 @@ from pytorch_tabular.models.common.layers.embeddings import Embedding2dLayer
 from pytorch_tabular.models.common.layers.transformers import AppendCLSToken
 
 
-class MyFirstTransformer(pl.LightningModule):
+class SAINTTransformer(pl.LightningModule):
     def __init__(
         self,
         continuous_dims,
@@ -33,7 +33,7 @@ class MyFirstTransformer(pl.LightningModule):
 
         # Transformer block creations
         self.transformer_blocks = nn.ModuleList(
-            [TransformerBlock(d_model=d_model, num_heads=num_heads) for _ in range(num_block_layers)]
+            [DualAttentionLayer(d_model=d_model, num_heads=num_heads) for _ in range(num_block_layers)]
         )
 
         # Classification head
@@ -80,8 +80,8 @@ class MyFirstTransformer(pl.LightningModule):
 
         # Calculate torch metrics
         probs = torch.sigmoid(y_hat)
-        self.train_acc(probs, y.int())
 
+        self.train_acc(probs, y.int())
         self.log("train_acc", self.train_acc, on_step=True, on_epoch=True)
 
         return loss
@@ -97,6 +97,7 @@ class MyFirstTransformer(pl.LightningModule):
 
         # Calculate torch metrics
         probs = torch.sigmoid(y_hat)
+
         self.val_acc(probs, y.int())
         self.val_auroc(probs, y.int())
         self.val_f1(probs, y.int())

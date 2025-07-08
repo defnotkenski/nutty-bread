@@ -1,8 +1,8 @@
 import torch
 from torch.utils.data import DataLoader
 
-from custom.data_loader import preprocess_df, CustomTabularDataset
-from custom.model import MyFirstTransformer
+from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset
+from custom.models.saint_transformer.saint_transformer import SAINTTransformer
 
 from pathlib import Path
 from sklearn.model_selection import train_test_split
@@ -50,7 +50,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
     print("Testing FT-Transformer structure...")
 
     preprocessed = preprocess_df(df_path=path_to_csv)
-    dataset = CustomTabularDataset(preprocessed)
+    dataset = SAINTDataset(preprocessed)
 
     train_idx, temp_idx = train_test_split(range(len(dataset)), test_size=0.2, shuffle=False, random_state=42)
     validate_idx, eval_idx = train_test_split(temp_idx, test_size=0.5, shuffle=False, random_state=42)
@@ -88,7 +88,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
     # }
 
     # Create model
-    my_first_model = MyFirstTransformer(
+    saint_model = SAINTTransformer(
         continuous_dims=preprocessed.continuous_tensor.shape[1],
         categorical_dims=preprocessed.categorical_cardinalities,
         learning_rate=0.0001,
@@ -115,7 +115,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
         log_every_n_steps=1,
     )
 
-    trainer.fit(my_first_model, train_dataloaders=train_dataloader, val_dataloaders=validation_dataloader)
+    trainer.fit(saint_model, train_dataloaders=train_dataloader, val_dataloaders=validation_dataloader)
 
     # Run evaluations on trained model
     if perform_eval:
@@ -127,7 +127,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
                 eval_x, eval_y = eval_batch
 
                 # Get predictions as raw logits
-                raw_logits: torch.Tensor = my_first_model(eval_x)
+                raw_logits: torch.Tensor = saint_model(eval_x)
 
                 # Run sigmoid to get probabilities from raw logits
                 probabilities = torch.sigmoid(raw_logits)

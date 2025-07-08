@@ -5,7 +5,7 @@ from torch.nn import Linear
 import math
 
 
-def compute_attention(x: torch.Tensor, q_proj: Linear, k_proj: Linear, v_proj: Linear, num_heads: int):
+def compute_attention(x: torch.Tensor, q_proj: Linear, k_proj: Linear, v_proj: Linear, num_heads: int, dropout: nn.Dropout):
     """Computes attention made into a reusable block for inter and intra attention."""
     batch_size, num_features, d_model = x.shape
     heads_dim = d_model // num_heads
@@ -32,6 +32,9 @@ def compute_attention(x: torch.Tensor, q_proj: Linear, k_proj: Linear, v_proj: L
 
     attention_weights = f.softmax(attention_scores, dim=-1)
 
+    # Add attention dropout
+    attention_weights = dropout(attention_weights)
+
     # Apply attention to values
     attended = torch.matmul(attention_weights, v)
 
@@ -43,11 +46,12 @@ def compute_attention(x: torch.Tensor, q_proj: Linear, k_proj: Linear, v_proj: L
 
 
 class IntraRowAttention(nn.Module):
-    def __init__(self, d_model: int, num_heads: int):
+    def __init__(self, d_model: int, num_heads: int, dropout: float):
         super().__init__()
 
         self.d_model = d_model
         self.num_heads = num_heads
+        self.dropout = nn.Dropout(dropout)
 
         self.query_projection = nn.Linear(d_model, d_model)
         self.key_projection = nn.Linear(d_model, d_model)
@@ -60,15 +64,17 @@ class IntraRowAttention(nn.Module):
             k_proj=self.key_projection,
             v_proj=self.value_projection,
             num_heads=self.num_heads,
+            dropout=self.dropout,
         )
 
 
 class InterRowAttention(nn.Module):
-    def __init__(self, d_model: int, num_heads: int):
+    def __init__(self, d_model: int, num_heads: int, dropout: float):
         super().__init__()
 
         self.d_model = d_model
         self.num_heads = num_heads
+        self.dropout = nn.Dropout(dropout)
 
         self.query_projection = nn.Linear(d_model, d_model)
         self.key_projection = nn.Linear(d_model, d_model)
@@ -83,6 +89,7 @@ class InterRowAttention(nn.Module):
             k_proj=self.key_projection,
             v_proj=self.value_projection,
             num_heads=self.num_heads,
+            dropout=self.dropout,
         )
 
         return attended.transpose(0, 1)
