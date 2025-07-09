@@ -1,5 +1,6 @@
 import lightning.pytorch as pylightning
 from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.loggers import NeptuneLogger
 import torch
 from torch.utils.data import DataLoader
 from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset
@@ -7,6 +8,11 @@ from custom.models.saint_transformer.saint_transformer import SAINTTransformer
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 import modal
+
+neptune_logger = NeptuneLogger(
+    project="toastbutter/diabeticdonkey",
+    api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4OTY0NjY1My00ZmViLTQxYzctOWIzNi1mNDJlNDdiNDk2NjIifQ==",
+)
 
 
 modal_app = modal.App("neural-learning")
@@ -19,32 +25,13 @@ modal_img = (
 # modal_gpu = "A100-40GB"
 modal_gpu = "H100"
 
+torch.set_float32_matmul_precision("medium")
 
-class ProgressCallback(Callback):
-    def on_train_epoch_start(self, trainer, pl_module) -> None:
+
+class CustomCallback(Callback):
+    def on_train_epoch_start(self, trainer: pylightning.Trainer, pl_module: pylightning.LightningModule) -> None:
         epoch = trainer.current_epoch
-        print(f"Starting epoch: {epoch}...")
-
-        return
-
-    def on_train_epoch_end(self, trainer, pl_module) -> None:
-        # metrics = trainer.callback_metrics
-        epoch = trainer.current_epoch
-        print(f"Epoch {epoch} completed")
-
-        return
-
-    def on_validation_end(self, trainer, pl_module) -> None:
-        metrics = trainer.callback_metrics
-
-        # if "train_acc" in metrics:
-        #     print(f"Train Acc: {metrics["train_acc"]:.3f}")
-        if "val_acc" in metrics:
-            print(f"Val Acc: {metrics["val_acc"]:.3f}")
-        if "val_auroc" in metrics:
-            print(f"Val AUROC: {metrics["val_auroc"]:.3f}")
-
-        print(f"\n")
+        print(f"Starting epoch: {epoch}")
 
         return
 
@@ -99,26 +86,27 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
         continuous_dims=preprocessed.continuous_tensor.shape[1],
         categorical_dims=preprocessed.categorical_cardinalities,
         learning_rate=0.0001,
-        num_block_layers=6,
+        num_block_layers=4,
         d_model=64,
-        num_heads=8,
+        num_heads=4,
         output_size=1,
     )
 
-    trainer_callbacks = []
+    callbacks_list = []
     if quiet_mode:
-        trainer_callbacks.append(ProgressCallback())
+        callbacks_list.append(CustomCallback())
 
     trainer = pylightning.Trainer(
+        accumulate_grad_batches=8,
         gradient_clip_val=1.0,
-        max_epochs=10,
+        max_epochs=30,
         accelerator="auto",
         devices=1,
         val_check_interval=1.0,
         enable_checkpointing=False,
-        logger=False,
+        logger=neptune_logger,
         enable_progress_bar=not quiet_mode,
-        callbacks=trainer_callbacks,
+        callbacks=callbacks_list,
     )
 
     trainer.fit(saint_model, train_dataloaders=train_dataloader, val_dataloaders=validation_dataloader)
@@ -165,7 +153,7 @@ def run_with_modal() -> None:
     modal.interact()
 
     modal_dataset_path = Path.cwd() / "datasets" / "sample_horses.csv"
-    train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=False)
+    train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=True)
 
     return
 

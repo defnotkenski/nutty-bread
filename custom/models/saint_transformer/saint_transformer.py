@@ -83,7 +83,9 @@ class SAINTTransformer(pl.LightningModule):
         probs = torch.sigmoid(y_hat)
 
         self.train_acc(probs, y.int())
-        self.log("train_acc", self.train_acc, on_step=True, on_epoch=True)
+
+        self.log("train_acc", self.train_acc, on_step=True, prog_bar=False)
+        self.log("train_loss", loss, on_step=True, prog_bar=False)
 
         return loss
 
@@ -103,14 +105,16 @@ class SAINTTransformer(pl.LightningModule):
         self.val_auroc(probs, y.int())
         self.val_f1(probs, y.int())
 
+        self.log("val_loss", loss, on_epoch=True, prog_bar=True)
         self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True)
-        self.log("val_auroc", self.val_auroc, on_epoch=True, prog_bar=True)
-        self.log("val_f1", self.val_f1, on_epoch=True, prog_bar=True)
+        self.log("val_auroc", self.val_auroc, on_epoch=True, prog_bar=False)
+        self.log("val_f1", self.val_f1, on_epoch=True, prog_bar=False)
 
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=0.01)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=50)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=0.05)
+        # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=10)
 
-        return [optimizer], [scheduler]
+        # return [optimizer], [scheduler]
+        return optimizer
