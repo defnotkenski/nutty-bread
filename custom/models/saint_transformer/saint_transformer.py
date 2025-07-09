@@ -5,6 +5,7 @@ import torch.nn as nn
 from custom.layers.dual_attention_layer import DualAttentionLayer
 from torchmetrics import Accuracy, F1Score, AUROC
 import torch.nn.functional as f
+from prodigyopt import Prodigy
 
 # Import the actual components from pytorch-tabular
 from pytorch_tabular.models.common.layers.embeddings import Embedding2dLayer
@@ -113,8 +114,11 @@ class SAINTTransformer(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=0.05)
+        # Configure optimizers
+        # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=0.05)
+        optimizer = Prodigy(self.parameters(), lr=1.0, weight_decay=0.05, d_coef=1.0)
+
+        # Configure schedulers
         # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=10)
 
-        # return [optimizer], [scheduler]
-        return optimizer
+        return optimizer  # If using a scheduler, need to return [optimizer], [scheduler] as a tuple

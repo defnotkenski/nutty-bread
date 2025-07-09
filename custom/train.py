@@ -1,5 +1,5 @@
 import lightning.pytorch as pylightning
-from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.callbacks import Callback, ModelCheckpoint
 from lightning.pytorch.loggers import NeptuneLogger
 import torch
 from torch.utils.data import DataLoader
@@ -92,7 +92,16 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
         output_size=1,
     )
 
-    callbacks_list = []
+    checkpoint_callback = ModelCheckpoint(
+        monitor="val_loss",
+        dirpath="checkpoints/",
+        filename="saint-{epoch:02d}-{val_loss:.2f}",
+        save_top_k=1,
+        mode="min",
+        verbose=True,
+    )
+
+    callbacks_list: list = [checkpoint_callback]
     if quiet_mode:
         callbacks_list.append(CustomCallback())
 
@@ -103,7 +112,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
         accelerator="auto",
         devices=1,
         val_check_interval=1.0,
-        enable_checkpointing=False,
+        enable_checkpointing=True,
         logger=neptune_logger,
         enable_progress_bar=not quiet_mode,
         callbacks=callbacks_list,
@@ -111,32 +120,65 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
 
     trainer.fit(saint_model, train_dataloaders=train_dataloader, val_dataloaders=validation_dataloader)
 
+    # Load the best checkpoint for evaluation
+    best_model_path = checkpoint_callback.best_model_path
+
+    print(f"Loading best model from: {best_model_path} for evaluation")
+    saint_eval_model = SAINTTransformer.load_from_checkpoint(best_model_path)
+
     # Run evaluations on trained model
     if perform_eval:
         all_eval_probabilities = []
         all_eval_predictions = []
+        all_eval_targets = []
 
         with torch.no_grad():
             for eval_batch in eval_dataloader:
                 eval_x, eval_y = eval_batch
 
                 # Get predictions as raw logits
-                raw_logits: torch.Tensor = saint_model(eval_x)
+                raw_logits: torch.Tensor = saint_eval_model(eval_x)
 
                 # Run sigmoid to get probabilities from raw logits
                 probabilities = torch.sigmoid(raw_logits)
 
-                # Get probabailities as numpy array and add to list
+                # Collect probabilities, predictions, and TRUE TARGETS
                 all_eval_probabilities.extend(probabilities.squeeze().cpu().numpy())
-
-                # Get predictions as numpy array and add to list
                 all_eval_predictions.extend((probabilities.squeeze() > 0.5).cpu().numpy())
+                all_eval_targets.extend(eval_y.squeeze().cpu().numpy())
 
-            # Print results
-            print(f"\n===== Eval results ======\n")
+        # Calculate metrics
+        from sklearn.metrics import (
+            accuracy_score,
+            roc_auc_score,
+            f1_score,
+            classification_report,
+            cohen_kappa_score,
+            matthews_corrcoef,
+        )
+        import numpy as np
 
-            for i, (prob, pred_class) in enumerate(zip(all_eval_probabilities, all_eval_predictions)):
-                print(f"Sample {i}: Probability = {prob}, Prediction = {pred_class}")
+        eval_targets = np.array(all_eval_targets)
+        eval_probs = np.array(all_eval_probabilities)
+        eval_preds = np.array(all_eval_predictions)
+
+        # Calculate final metrics
+        eval_accuracy = accuracy_score(eval_targets, eval_preds)
+        eval_auroc = roc_auc_score(eval_targets, eval_probs)
+        eval_f1 = f1_score(eval_targets, eval_preds)
+        eval_kappa = cohen_kappa_score(eval_targets, eval_preds)
+        eval_mcc = matthews_corrcoef(eval_targets, eval_preds)
+
+        # Print results
+        print(f"\n===== Final Eval Results ======")
+        print(f"Eval Accuracy: {eval_accuracy:.4f}")
+        print(f"Eval AUROC: {eval_auroc:.4f}")
+        print(f"Eval F1: {eval_f1:.4f}")
+        print(f"Eval Cohen's Kappa: {eval_kappa:.4f}")
+        print(f"Eval Matthews Correlation: {eval_mcc:.4f}")
+
+        print(f"\n===== Classification Report ======")
+        print(classification_report(eval_targets, eval_preds, target_names=["No Place", "Place"]))
 
     # If it reaches this point, thank fuckin god
     print(f"Output shape: {raw_logits.shape}")
