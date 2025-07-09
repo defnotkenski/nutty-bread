@@ -34,11 +34,11 @@ class ProgressCallback(Callback):
 
         return
 
-    def on_validation_epoch_end(self, trainer, pl_module) -> None:
+    def on_validation_end(self, trainer, pl_module) -> None:
         metrics = trainer.callback_metrics
 
-        if "train_acc" in metrics:
-            print(f"Train Acc: {metrics["train_acc"]:.3f}")
+        # if "train_acc" in metrics:
+        #     print(f"Train Acc: {metrics["train_acc"]:.3f}")
         if "val_acc" in metrics:
             print(f"Val Acc: {metrics["val_acc"]:.3f}")
         if "val_auroc" in metrics:
@@ -63,6 +63,9 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
     train_dataset = torch.utils.data.Subset(dataset, train_idx)
     val_dataset = torch.utils.data.Subset(dataset, validate_idx)
     eval_dataset = torch.utils.data.Subset(dataset, eval_idx)
+
+    # Check target distribution in validation set
+    _val_targets = [dataset[i][1] for i in validate_idx[:10]]  # Check first 10
 
     # Create dataloaders
     batch_size = 1  # DO NOT CHANGE THE BATCH SIZE HOE.
@@ -154,10 +157,12 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
     return
 
 
-@modal_app.function(gpu=modal_gpu, image=modal_img)
+@modal_app.function(gpu=modal_gpu, image=modal_img, timeout=3600)
 def run_with_modal() -> None:
     has_cuda = torch.cuda.is_available()
     print(f"CUDA status: {has_cuda}")
+
+    modal.interact()
 
     modal_dataset_path = Path.cwd() / "datasets" / "sample_horses.csv"
     train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=False)
