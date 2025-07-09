@@ -1,14 +1,13 @@
+import lightning.pytorch as pylightning
+from lightning.pytorch.callbacks import Callback
 import torch
 from torch.utils.data import DataLoader
-
 from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset
 from custom.models.saint_transformer.saint_transformer import SAINTTransformer
-
 from pathlib import Path
 from sklearn.model_selection import train_test_split
-import pytorch_lightning as pylightning
-from pytorch_lightning.callbacks import Callback
 import modal
+
 
 modal_app = modal.App("neural-learning")
 modal_img = (
@@ -17,7 +16,8 @@ modal_img = (
     .add_local_dir(Path.cwd() / "custom", remote_path="/root/custom")
     .add_local_dir(Path.cwd() / "datasets", remote_path="/root/datasets")
 )
-modal_gpu = "A100-40GB"
+# modal_gpu = "A100-40GB"
+modal_gpu = "H100"
 
 
 class ProgressCallback(Callback):
@@ -28,10 +28,14 @@ class ProgressCallback(Callback):
         return
 
     def on_train_epoch_end(self, trainer, pl_module) -> None:
-        metrics = trainer.callback_metrics
+        # metrics = trainer.callback_metrics
         epoch = trainer.current_epoch
-
         print(f"Epoch {epoch} completed")
+
+        return
+
+    def on_validation_epoch_end(self, trainer, pl_module) -> None:
+        metrics = trainer.callback_metrics
 
         if "train_acc" in metrics:
             print(f"Train Acc: {metrics["train_acc"]:.3f}")
@@ -112,7 +116,6 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
         logger=False,
         enable_progress_bar=not quiet_mode,
         callbacks=trainer_callbacks,
-        log_every_n_steps=1,
     )
 
     trainer.fit(saint_model, train_dataloaders=train_dataloader, val_dataloaders=validation_dataloader)
@@ -157,7 +160,7 @@ def run_with_modal() -> None:
     print(f"CUDA status: {has_cuda}")
 
     modal_dataset_path = Path.cwd() / "datasets" / "sample_horses.csv"
-    train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=True)
+    train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=False)
 
     return
 

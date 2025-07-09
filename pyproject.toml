@@ -10,5 +10,6 @@ dependencies = [
     "polars>=1.31.0",
     "pytorch-tabular>=1.1.1",
     "requests>=2.32.4",
+    "rich>=14.0.0",
     "torch>=2.7.1",
 ]

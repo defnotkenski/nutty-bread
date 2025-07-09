@@ -7,7 +7,6 @@ from typing import NamedTuple
 from sklearn.model_selection import train_test_split
 from pathlib import Path
 from datasets.sample_horses_schema import COLUMN_TYPES
-from custom.commons.utils import cleanup_dataframe
 
 
 @dataclass(frozen=True)
@@ -17,8 +16,9 @@ class FeatureSet:
 
 
 def generate_train_features(lag_count: int, other_count: int) -> FeatureSet:
-    yaml_path = Path.cwd().parent / "datasets" / "sample_training.yaml"
+    # yaml_path = Path.cwd().parent / "datasets" / "sample_training.yaml"
     # yaml_path = Path.cwd() / "sample_training.yaml"
+    yaml_path = Path(__file__).resolve().parents[2] / "datasets" / "sample_training.yaml"
 
     with open(yaml_path) as sample_yaml:
         sample_features = yaml.safe_load(sample_yaml)
