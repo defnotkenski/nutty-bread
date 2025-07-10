@@ -180,7 +180,7 @@ class SAINTTransformer(pl.LightningModule):
         # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=0.05)
         # optimizer = Prodigy(self.parameters(), lr=self.learning_rate, weight_decay=0.05, d_coef=1.0)
         optimizer = ProdigyPlusScheduleFree(
-            self.parameters(), lr=self.learning_rate, use_speed=True, use_orthograd=False, use_focus=True
+            self.parameters(), lr=self.learning_rate, use_speed=True, use_orthograd=False, use_focus=False
         )
 
         # Configure schedulers

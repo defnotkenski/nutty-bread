@@ -118,7 +118,8 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
                 "optimizer": "prodigy-plus",
                 "prodigy_use_speed": True,
                 "prodigy_use_orthograd": False,
-                "prodigy_use_focus": True,
+                "prodigy_use_focus": False,
+                "gradient_clip_cal": None,
             }
         )
     else:
@@ -130,7 +131,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
 
     trainer = pylightning.Trainer(
         accumulate_grad_batches=8,
-        gradient_clip_val=1.0,
+        gradient_clip_val=None,  # Set to None for Prodigy compatibility
         max_epochs=30,
         accelerator="auto",
         devices=1,
