@@ -65,7 +65,7 @@ class SAINTTransformer(pl.LightningModule):
         self.test_metrics = None
 
     def forward(self, x: dict[str, torch.Tensor]):
-        # RACE AWARE: Squeeze out the batch dimension added by the dataloader
+        # Squeeze out the batch dimension added by the dataloader
         x = {k: v.squeeze(0) for k, v in x.items()}
 
         # Step 1: Embeddings
@@ -89,9 +89,9 @@ class SAINTTransformer(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = batch
 
-        y = y.squeeze(0)  # RACE AWARE: Remove batch dimension from targets
+        y = y.squeeze(0)  # Remove batch dimension from targets
         y_hat = self(x)
-        y_hat = y_hat.squeeze(-1)  # RACE AWARE: Remove the last dimension
+        y_hat = y_hat.squeeze(-1)  # Remove the last dimension
 
         loss = f.binary_cross_entropy_with_logits(y_hat, y)
 
