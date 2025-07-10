@@ -57,9 +57,8 @@ def generate_train_features(lag_count: int, other_count: int) -> FeatureSet:
         *current_race,
         *current_horse,
         *master_current_horse_lags,
-        *master_other_horse,
-        *master_other_horse_lags,
-        # f"target",
+        # *master_other_horse,
+        # *master_other_horse_lags,
     ]
 
     return FeatureSet(features=master_features, target=["target"])
@@ -311,9 +310,9 @@ class FeatureProcessor:
         # Fill nulls with a sentinel value like -999. Do not go bigger in order to prevent gradient issues.
         # base_df = base_df.with_columns(pl.col(pl.selectors.NUMERIC_DTYPES).fill_null(-999))
 
-        base_df = base_df.with_columns(
-            [pl.col(col).fill_null(-999) for col in self.feature_set.features if base_df.schema[col].is_numeric()]
-        )
+        # base_df = base_df.with_columns(
+        #     [pl.col(col).fill_null(-999) for col in self.feature_set.features if base_df.schema[col].is_numeric()]
+        # )
 
         # After making changes.
         _null_count_after = base_df.null_count()
@@ -420,7 +419,7 @@ class FeatureProcessor:
 
         # ===== Process opponent horses. =====
 
-        feature_df = self._process_opponents(working_df=feature_df)
+        # feature_df = self._process_opponents(working_df=feature_df)
 
         # ===== Generate null indicator columns. =====
 

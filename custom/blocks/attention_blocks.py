@@ -1,8 +1,10 @@
-import torch.nn as nn
 import torch.nn.functional as f
+import torch.nn as nn
 import torch
 from torch.nn import Linear
 import math
+
+# from custom.blocks.activation_blocks import StableMax
 
 
 def compute_attention(x: torch.Tensor, q_proj: Linear, k_proj: Linear, v_proj: Linear, num_heads: int, dropout: nn.Dropout):
@@ -30,6 +32,8 @@ def compute_attention(x: torch.Tensor, q_proj: Linear, k_proj: Linear, v_proj: L
     scale = math.sqrt(heads_dim)
     attention_scores = attention_scores / scale
 
+    # stablemax = StableMax(dim=-1)
+    # attention_weights = stablemax(attention_scores)  # Experimental: Use softmax as fallback
     attention_weights = f.softmax(attention_scores, dim=-1)
 
     # Add attention dropout

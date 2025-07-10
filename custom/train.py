@@ -8,6 +8,8 @@ from custom.models.saint_transformer.saint_transformer import SAINTTransformer
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 import modal
+from custom.models.saint_transformer.config import SAINTConfig
+from dataclasses import asdict
 
 # neptune_logger = NeptuneLogger(
 #     project="toastbutter/diabeticdonkey",
@@ -40,11 +42,13 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
     # Test the transformer model
     print("Testing FT-Transformer structure...")
 
+    config = SAINTConfig()
+
     preprocessed = preprocess_df(df_path=path_to_csv)
     dataset = SAINTDataset(preprocessed)
 
-    train_idx, temp_idx = train_test_split(range(len(dataset)), test_size=0.2, shuffle=False, random_state=42)
-    validate_idx, eval_idx = train_test_split(temp_idx, test_size=0.5, shuffle=False, random_state=42)
+    train_idx, temp_idx = train_test_split(range(len(dataset)), test_size=0.2, shuffle=config.shuffle, random_state=42)
+    validate_idx, eval_idx = train_test_split(temp_idx, test_size=0.5, shuffle=config.shuffle, random_state=42)
 
     # Create subset datasets
     train_dataset = torch.utils.data.Subset(dataset, train_idx)
@@ -55,17 +59,19 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
     _val_targets = [dataset[i][1] for i in validate_idx[:10]]  # Check first 10
 
     # Create dataloaders
-    batch_size = 1  # DO NOT CHANGE THE BATCH SIZE HOE.
-    num_workers = 6
+    batch_size = config.batch_size  # DO NOT CHANGE THE BATCH SIZE HOE.
+    num_workers = config.num_workers
+    pin_memory = config.pin_memory
+    shuffle = config.shuffle
 
     train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True
+        train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=pin_memory
     )
     validation_dataloader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True
+        val_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=pin_memory
     )
     eval_dataloader = DataLoader(
-        eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True
+        eval_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=pin_memory
     )
 
     # Create test tabular data
@@ -91,11 +97,12 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
     saint_model = SAINTTransformer(
         continuous_dims=preprocessed.continuous_tensor.shape[1],
         categorical_dims=preprocessed.categorical_cardinalities,
-        learning_rate=1.0,  # Prev. 0.0001
-        num_block_layers=4,
-        d_model=64,
-        num_heads=4,
-        output_size=1,
+        learning_rate=config.learning_rate,
+        num_block_layers=config.num_block_layers,
+        d_model=config.d_model,
+        num_heads=config.num_attention_heads,
+        output_size=config.output_size,
+        config=config,
     )
 
     checkpoint_callback = ModelCheckpoint(
@@ -113,13 +120,13 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
             api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4OTY0NjY1My00ZmViLTQxYzctOWIzNi1mNDJlNDdiNDk2NjIifQ==",
         )
 
+        config_dict = asdict(config)
+
         neptune_logger.log_hyperparams(
             {
                 "optimizer": "prodigy-plus",
-                "prodigy_use_speed": True,
-                "prodigy_use_orthograd": False,
-                "prodigy_use_focus": False,
-                "gradient_clip_cal": None,
+                "attention_activation": "softmax",
+                **config_dict,
             }
         )
     else:
@@ -130,13 +137,13 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         callbacks_list.append(CustomCallback())
 
     trainer = pylightning.Trainer(
-        accumulate_grad_batches=8,
-        gradient_clip_val=None,  # Set to None for Prodigy compatibility
-        max_epochs=30,
+        accumulate_grad_batches=config.accumulate_grad_batches,
+        gradient_clip_val=config.gradient_clip_val,
+        max_epochs=config.max_epochs,
         accelerator="auto",
         devices=1,
-        val_check_interval=1.0,
-        enable_checkpointing=True,
+        val_check_interval=config.val_check_interval,
+        enable_checkpointing=config.enable_checkpointing,
         logger=neptune_logger if enable_logging else False,
         enable_progress_bar=not quiet_mode,
         callbacks=callbacks_list,
@@ -160,7 +167,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
     return
 
 
-@modal_app.function(gpu=modal_gpu, image=modal_img, timeout=10800, cpu=8)
+@modal_app.function(gpu=modal_gpu, image=modal_img, timeout=10800, cpu=2)
 def run_with_modal() -> None:
     has_cuda = torch.cuda.is_available()
     print(f"CUDA status: {has_cuda}")

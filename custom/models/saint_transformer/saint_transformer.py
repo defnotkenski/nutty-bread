@@ -4,6 +4,7 @@ import torch.nn as nn
 from custom.layers.dual_attention_layer import DualAttentionLayer
 from torchmetrics import Accuracy, F1Score, AUROC
 import torch.nn.functional as f
+from custom.models.saint_transformer.config import SAINTConfig
 from sklearn.metrics import (
     accuracy_score,
     roc_auc_score,
@@ -31,10 +32,12 @@ class SAINTTransformer(pl.LightningModule):
         num_heads: int,
         output_size: int,
         learning_rate: float,
+        config: SAINTConfig,
     ):
         super().__init__()
 
-        self.save_hyperparameters()
+        # self.save_hyperparameters()
+        self.config = config
 
         self.embedding_layer = Embedding2dLayer(
             continuous_dim=continuous_dims, categorical_cardinality=categorical_dims or [], embedding_dim=d_model
@@ -180,7 +183,11 @@ class SAINTTransformer(pl.LightningModule):
         # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=0.05)
         # optimizer = Prodigy(self.parameters(), lr=self.learning_rate, weight_decay=0.05, d_coef=1.0)
         optimizer = ProdigyPlusScheduleFree(
-            self.parameters(), lr=self.learning_rate, use_speed=True, use_orthograd=False, use_focus=False
+            self.parameters(),
+            lr=self.learning_rate,
+            use_speed=self.config.prodigy_use_speed,
+            use_orthograd=self.config.prodigy_use_orthograd,
+            use_focus=self.config.prodigy_use_focus,
         )
 
         # Configure schedulers

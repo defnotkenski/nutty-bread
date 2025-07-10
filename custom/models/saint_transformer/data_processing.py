@@ -53,9 +53,6 @@ def preprocess_df(df_path: Path):
 
     # ===== END RACE AWARE =====
 
-    # Create target col
-    # base_df = base_df.with_columns(pl.col("official_final_position").is_in([1, 2, 3]).cast(pl.Int64).alias("target"))
-
     # Extract target col
     target_tensor = torch.tensor(base_df["target"].to_numpy(), dtype=torch.float32)
 
@@ -65,18 +62,16 @@ def preprocess_df(df_path: Path):
     # Extract and scale continuous cols
     scaler = StandardScaler()
 
-    # cont_cols = base_df.select(pl.selectors.numeric()).to_numpy()
     cont_cols = base_df.select(feature_config.continuous_cols).to_numpy()
-
     cont_cols_scaled = scaler.fit_transform(cont_cols)
 
-    # Impute missing data with sentinel value (temporary until solution)
-    # cont_cols_sentinel = np.where(np.isnan(cont_cols_scaled), -999, cont_cols_scaled)
+    # Impute missing data with sentinel value for continuous cols
+    cont_cols_sentinel = np.where(np.isnan(cont_cols_scaled), -999, cont_cols_scaled)
 
-    cont_tensor = torch.tensor(cont_cols_scaled, dtype=torch.float32)
+    # Store as a torch tensor
+    cont_tensor = torch.tensor(cont_cols_sentinel, dtype=torch.float32)
 
     # Extract categorical cols
-    # cat_cols_df = base_df.select(pl.selectors.string(include_categorical=True)).fill_null("<UNK>")
     cat_cols_df = base_df.select(feature_config.categorical_cols).fill_null("<UNK>")
 
     encoded_cats = []
@@ -107,25 +102,11 @@ class SAINTDataset(Dataset):
         self.categorical = preprocessed_data.categorical_tensor
         self.target = preprocessed_data.target_tensor
 
-        # RACE AWARE
         self.race_boundaries = preprocessed_data.race_boundaries
 
-    # def __len__(self):
-    #     return len(self.continuous)
-
-    # RACE AWARE
     def __len__(self):
         return len(self.race_boundaries)
 
-    # def __getitem__(self, idx):
-    #     return {
-    #         "continuous": self.continuous[idx],
-    #         "categorical": self.categorical[idx],
-    #     }, self.target[
-    #         idx
-    #     ].unsqueeze(0)
-
-    # RACE AWARE
     def __getitem__(self, item_idx):
         start_idx, end_idx = self.race_boundaries[item_idx]
 
