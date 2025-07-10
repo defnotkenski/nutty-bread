@@ -1,11 +1,20 @@
-# import pytorch_lightning as pl
 import lightning.pytorch as pl
 import torch
 import torch.nn as nn
 from custom.layers.dual_attention_layer import DualAttentionLayer
 from torchmetrics import Accuracy, F1Score, AUROC
 import torch.nn.functional as f
-from prodigyopt import Prodigy
+from sklearn.metrics import (
+    accuracy_score,
+    roc_auc_score,
+    f1_score,
+    cohen_kappa_score,
+    matthews_corrcoef,
+    classification_report,
+)
+
+# from prodigyopt import Prodigy
+from prodigyplus.prodigy_plus_schedulefree import ProdigyPlusScheduleFree
 
 # Import the actual components from pytorch-tabular
 from pytorch_tabular.models.common.layers.embeddings import Embedding2dLayer
@@ -49,6 +58,9 @@ class SAINTTransformer(pl.LightningModule):
         self.val_auroc = AUROC(task="binary")
         self.val_f1 = F1Score(task="binary")
 
+        self.test_step_outputs = []
+        self.test_metrics = None
+
     def forward(self, x: dict[str, torch.Tensor]):
         # RACE AWARE: Squeeze out the batch dimension added by the dataloader
         x = {k: v.squeeze(0) for k, v in x.items()}
@@ -90,6 +102,56 @@ class SAINTTransformer(pl.LightningModule):
 
         return loss
 
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+
+        y = y.squeeze(0)
+        y_hat = self(x)
+        y_hat = y_hat.squeeze(-1)
+
+        # Calculate predictions
+        probs = torch.sigmoid(y_hat)
+        preds = (probs > 0.5).float()
+
+        # Store results for later collection
+        result = {"test_probs": probs, "test_preds": preds, "test_targets": y}
+        self.test_step_outputs.append(result)
+
+        return result
+
+    def on_test_epoch_end(self) -> None:
+        # Lightning automatically passes collected outputs
+        all_probs = torch.cat([x["test_probs"] for x in self.test_step_outputs])
+        all_preds = torch.cat([x["test_preds"] for x in self.test_step_outputs])
+        all_targets = torch.cat([x["test_targets"] for x in self.test_step_outputs])
+
+        # Convert to numpy for sklearn
+        probs_np = all_probs.cpu().numpy()
+        preds_np = all_preds.cpu().numpy()
+        targets_np = all_targets.cpu().numpy()
+
+        # Calculate sklearn metrics
+        accuracy = accuracy_score(targets_np, preds_np)
+        auroc = roc_auc_score(targets_np, probs_np)
+        f1 = f1_score(targets_np, preds_np)
+        kappa = cohen_kappa_score(targets_np, preds_np)
+        mcc = matthews_corrcoef(targets_np, preds_np)
+        report = classification_report(targets_np, preds_np, target_names=["Fucked", "Not Fucked"])
+
+        self.test_metrics = {"accuracy": accuracy, "auroc": auroc, "f1": f1, "kappa": kappa, "mcc": mcc}
+
+        print(f"===== 🪿 Eval Results 🦖 =====")
+        print(f"Test Accuracy: {accuracy:.4f}")
+        print(f"Test AUROC: {auroc:.4f}")
+        print(f"Test F1: {f1:.4f}")
+        print(f"Test Kappa: {kappa:.4f}")
+        print(f"Test MCC: {mcc:.4f}")
+        print(f"Test Report:\n{report}")
+
+        self.test_step_outputs.clear()
+
+        return
+
     def validation_step(self, batch, batch_idx):
         x, y = batch
 
@@ -116,7 +178,10 @@ class SAINTTransformer(pl.LightningModule):
     def configure_optimizers(self):
         # Configure optimizers
         # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=0.05)
-        optimizer = Prodigy(self.parameters(), lr=1.0, weight_decay=0.05, d_coef=1.0)
+        # optimizer = Prodigy(self.parameters(), lr=self.learning_rate, weight_decay=0.05, d_coef=1.0)
+        optimizer = ProdigyPlusScheduleFree(
+            self.parameters(), lr=self.learning_rate, use_speed=True, use_orthograd=False, use_focus=True
+        )
 
         # Configure schedulers
         # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=10)

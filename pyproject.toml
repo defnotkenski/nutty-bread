@@ -9,6 +9,7 @@ dependencies = [
     "modal>=1.0.5",
     "neptune>=1.14.0",
     "polars>=1.31.0",
+    "prodigy-plus-schedule-free==2.0.0rc2",
     "prodigyopt>=1.1.2",
     "pytorch-tabular>=1.1.1",
     "requests>=2.32.4",

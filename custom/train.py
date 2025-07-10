@@ -9,10 +9,10 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 import modal
 
-neptune_logger = NeptuneLogger(
-    project="toastbutter/diabeticdonkey",
-    api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4OTY0NjY1My00ZmViLTQxYzctOWIzNi1mNDJlNDdiNDk2NjIifQ==",
-)
+# neptune_logger = NeptuneLogger(
+#     project="toastbutter/diabeticdonkey",
+#     api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4OTY0NjY1My00ZmViLTQxYzctOWIzNi1mNDJlNDdiNDk2NjIifQ==",
+# )
 
 
 modal_app = modal.App("neural-learning")
@@ -36,7 +36,7 @@ class CustomCallback(Callback):
         return
 
 
-def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None:
+def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_logging: bool) -> None:
     # Test the transformer model
     print("Testing FT-Transformer structure...")
 
@@ -58,9 +58,15 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
     batch_size = 1  # DO NOT CHANGE THE BATCH SIZE HOE.
     num_workers = 6
 
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-    validation_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-    eval_dataloader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True
+    )
+    validation_dataloader = DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True
+    )
+    eval_dataloader = DataLoader(
+        eval_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True
+    )
 
     # Create test tabular data
     # batch_size = 2
@@ -85,7 +91,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
     saint_model = SAINTTransformer(
         continuous_dims=preprocessed.continuous_tensor.shape[1],
         categorical_dims=preprocessed.categorical_cardinalities,
-        learning_rate=0.0001,
+        learning_rate=1.0,  # Prev. 0.0001
         num_block_layers=4,
         d_model=64,
         num_heads=4,
@@ -93,13 +99,30 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
     )
 
     checkpoint_callback = ModelCheckpoint(
-        monitor="val_loss",
+        monitor="train_loss",
         dirpath="checkpoints/",
         filename="saint-{epoch:02d}-{val_loss:.2f}",
         save_top_k=1,
         mode="min",
-        verbose=True,
+        verbose=False,
     )
+
+    if enable_logging:
+        neptune_logger = NeptuneLogger(
+            project="toastbutter/diabeticdonkey",
+            api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4OTY0NjY1My00ZmViLTQxYzctOWIzNi1mNDJlNDdiNDk2NjIifQ==",
+        )
+
+        neptune_logger.log_hyperparams(
+            {
+                "optimizer": "prodigy-plus",
+                "prodigy_use_speed": True,
+                "prodigy_use_orthograd": False,
+                "prodigy_use_focus": True,
+            }
+        )
+    else:
+        neptune_logger = False
 
     callbacks_list: list = [checkpoint_callback]
     if quiet_mode:
@@ -113,81 +136,30 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool) -> None
         devices=1,
         val_check_interval=1.0,
         enable_checkpointing=True,
-        logger=neptune_logger,
+        logger=neptune_logger if enable_logging else False,
         enable_progress_bar=not quiet_mode,
         callbacks=callbacks_list,
     )
 
     trainer.fit(saint_model, train_dataloaders=train_dataloader, val_dataloaders=validation_dataloader)
 
-    # Load the best checkpoint for evaluation
-    best_model_path = checkpoint_callback.best_model_path
-
-    print(f"Loading best model from: {best_model_path} for evaluation")
-    saint_eval_model = SAINTTransformer.load_from_checkpoint(best_model_path)
-
-    # Run evaluations on trained model
     if perform_eval:
-        all_eval_probabilities = []
-        all_eval_predictions = []
-        all_eval_targets = []
+        # Load the best checkpoint for evaluation
+        best_model_path = checkpoint_callback.best_model_path
 
-        with torch.no_grad():
-            for eval_batch in eval_dataloader:
-                eval_x, eval_y = eval_batch
+        print(f"Loading best model from: {best_model_path} for evaluation")
+        saint_eval_model = SAINTTransformer.load_from_checkpoint(best_model_path)
 
-                # Get predictions as raw logits
-                raw_logits: torch.Tensor = saint_eval_model(eval_x)
-
-                # Run sigmoid to get probabilities from raw logits
-                probabilities = torch.sigmoid(raw_logits)
-
-                # Collect probabilities, predictions, and TRUE TARGETS
-                all_eval_probabilities.extend(probabilities.squeeze().cpu().numpy())
-                all_eval_predictions.extend((probabilities.squeeze() > 0.5).cpu().numpy())
-                all_eval_targets.extend(eval_y.squeeze().cpu().numpy())
-
-        # Calculate metrics
-        from sklearn.metrics import (
-            accuracy_score,
-            roc_auc_score,
-            f1_score,
-            classification_report,
-            cohen_kappa_score,
-            matthews_corrcoef,
-        )
-        import numpy as np
-
-        eval_targets = np.array(all_eval_targets)
-        eval_probs = np.array(all_eval_probabilities)
-        eval_preds = np.array(all_eval_predictions)
-
-        # Calculate final metrics
-        eval_accuracy = accuracy_score(eval_targets, eval_preds)
-        eval_auroc = roc_auc_score(eval_targets, eval_probs)
-        eval_f1 = f1_score(eval_targets, eval_preds)
-        eval_kappa = cohen_kappa_score(eval_targets, eval_preds)
-        eval_mcc = matthews_corrcoef(eval_targets, eval_preds)
-
-        # Print results
-        print(f"\n===== Final Eval Results ======")
-        print(f"Eval Accuracy: {eval_accuracy:.4f}")
-        print(f"Eval AUROC: {eval_auroc:.4f}")
-        print(f"Eval F1: {eval_f1:.4f}")
-        print(f"Eval Cohen's Kappa: {eval_kappa:.4f}")
-        print(f"Eval Matthews Correlation: {eval_mcc:.4f}")
-
-        print(f"\n===== Classification Report ======")
-        print(classification_report(eval_targets, eval_preds, target_names=["No Place", "Place"]))
+        # Run evaluations on trained model
+        trainer.test(saint_eval_model, eval_dataloader)
 
     # If it reaches this point, thank fuckin god
-    print(f"Output shape: {raw_logits.shape}")
     print("✅ FT-Transformer structure works!")
 
     return
 
 
-@modal_app.function(gpu=modal_gpu, image=modal_img, timeout=3600)
+@modal_app.function(gpu=modal_gpu, image=modal_img, timeout=10800, cpu=8)
 def run_with_modal() -> None:
     has_cuda = torch.cuda.is_available()
     print(f"CUDA status: {has_cuda}")
@@ -195,7 +167,7 @@ def run_with_modal() -> None:
     modal.interact()
 
     modal_dataset_path = Path.cwd() / "datasets" / "sample_horses.csv"
-    train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=True)
+    train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=True, enable_logging=True)
 
     return
 
@@ -210,4 +182,4 @@ if __name__ == "__main__":
     pass
 
     dataset_path = Path.cwd().parent / "datasets" / "sample_horses.csv"
-    train_model(path_to_csv=dataset_path, perform_eval=True, quiet_mode=False)
+    train_model(path_to_csv=dataset_path, perform_eval=True, quiet_mode=False, enable_logging=False)
