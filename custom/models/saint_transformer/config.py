@@ -12,9 +12,9 @@ class SAINTConfig:
     output_size: int = 1
 
     # Training hyperparams
-    batch_size: int = 1  # DO NOT CHANGE FOR THE SAINT ARCHITECTURE
+    batch_size: int = 8
     num_workers: int = 6
-    accumulate_grad_batches: int = 8
+    accumulate_grad_batches: int = 1
     gradient_clip_val: Optional[float] = None  # Set to None for Prodigy compatibility
     max_epochs: int = 30
     val_check_interval: float = 1.0

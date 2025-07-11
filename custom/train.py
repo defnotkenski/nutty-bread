@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 import modal
 from custom.models.saint_transformer.config import SAINTConfig
 from dataclasses import asdict
+from custom.models.saint_transformer.data_processing import collate_races
 
 # neptune_logger = NeptuneLogger(
 #     project="toastbutter/diabeticdonkey",
@@ -39,8 +40,7 @@ class CustomCallback(Callback):
 
 
 def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_logging: bool) -> None:
-    # Test the transformer model
-    print("Testing FT-Transformer structure...")
+    print("Testing SAINT-Heavy transformer infrastructure...")
 
     config = SAINTConfig()
 
@@ -65,13 +65,28 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
     shuffle = config.shuffle
 
     train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=pin_memory
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        collate_fn=collate_races,
     )
     validation_dataloader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=pin_memory
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        collate_fn=collate_races,
     )
     eval_dataloader = DataLoader(
-        eval_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=pin_memory
+        eval_dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        collate_fn=collate_races,
     )
 
     # Create test tabular data
@@ -175,7 +190,7 @@ def run_with_modal() -> None:
     modal.interact()
 
     modal_dataset_path = Path.cwd() / "datasets" / "sample_horses.csv"
-    train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=True, enable_logging=True)
+    train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=False, enable_logging=False)
 
     return
 

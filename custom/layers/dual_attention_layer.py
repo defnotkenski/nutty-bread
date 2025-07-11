@@ -28,7 +28,6 @@ class DualAttentionLayer(nn.Module):
         self.output_projection = nn.Linear(d_model * 2, d_model)
 
     def forward(self, x):
-
         # Dual attention blocks
         intra_out = self.intra_attention(x)
         inter_out = self.inter_attention(x)

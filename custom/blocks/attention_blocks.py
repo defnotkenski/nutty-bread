@@ -85,15 +85,46 @@ class InterRowAttention(nn.Module):
         self.value_projection = nn.Linear(d_model, d_model)
 
     def forward(self, x: torch.Tensor):
-        x_transposed = x.transpose(0, 1)
+        horse_len, num_features, d_model = x.shape
 
-        attended = compute_attention(
-            x=x_transposed,
-            q_proj=self.query_projection,
-            k_proj=self.key_projection,
-            v_proj=self.value_projection,
-            num_heads=self.num_heads,
-            dropout=self.dropout,
-        )
+        # Apply projections to original tensor
+        q: torch.Tensor = self.query_projection(x)  # (horse_len, num_features, d_model)
+        k: torch.Tensor = self.key_projection(x)  # (horse_len, num_features, d_model)
+        v: torch.Tensor = self.value_projection(x)  # (horse_len, num_features, d_model)
 
-        return attended.transpose(0, 1)
+        # Flatten each horse's features for intersample attention
+        flattened_dim = num_features * d_model
+        q_flat = q.view(horse_len, num_features * d_model)  # (horse_len, num_features * d_model)
+        k_flat = k.view(horse_len, num_features * d_model)  # (horse_len, num_features * d_model)
+        v_flat = v.view(horse_len, num_features * d_model)  # (horse_len, num_features * d_model)
+
+        # Multi-head attention setup
+        head_dim = flattened_dim // self.num_heads
+        assert flattened_dim % self.num_heads == 0, "flattened_dim must be divisible by num_heads"
+
+        # Reshape for multi-head attention
+        q_heads = q_flat.view(horse_len, self.num_heads, head_dim).transpose(0, 1)  # (num_heads, horse_len, head_dim)
+        k_heads = k_flat.view(horse_len, self.num_heads, head_dim).transpose(0, 1)  # (num_heads, horse_len, head_dim)
+        v_heads = v_flat.view(horse_len, self.num_heads, head_dim).transpose(0, 1)  # (num_heads, horse_len, head_dim)
+
+        # Compute attention for each head across horses (intersample attention)
+        attention_scores = torch.matmul(q_heads, k_heads.transpose(-2, -1))
+
+        scale = math.sqrt(head_dim)
+        attention_scores = attention_scores / scale
+
+        attention_weights = f.softmax(attention_scores, dim=-1)
+        attention_weights = self.dropout(attention_weights)
+
+        # Apply attention to values
+        attended_heads = torch.matmul(attention_weights, v_heads)
+
+        # Concatenate heads
+        attended = (
+            attended_heads.transpose(0, 1).contiguous().view(horse_len, flattened_dim)
+        )  # (horse_len, num_features * d_model)
+
+        # Reshape back to original format
+        attended = attended.view(horse_len, num_features, d_model)
+
+        return attended

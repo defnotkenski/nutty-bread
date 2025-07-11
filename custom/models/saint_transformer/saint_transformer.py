@@ -5,6 +5,7 @@ from custom.layers.dual_attention_layer import DualAttentionLayer
 from torchmetrics import Accuracy, F1Score, AUROC
 import torch.nn.functional as f
 from custom.models.saint_transformer.config import SAINTConfig
+from custom.commons.batched_embedding import BatchedEmbedding
 from sklearn.metrics import (
     accuracy_score,
     roc_auc_score,
@@ -18,8 +19,8 @@ from sklearn.metrics import (
 from prodigyplus.prodigy_plus_schedulefree import ProdigyPlusScheduleFree
 
 # Import the actual components from pytorch-tabular
-from pytorch_tabular.models.common.layers.embeddings import Embedding2dLayer
-from pytorch_tabular.models.common.layers.transformers import AppendCLSToken
+# from pytorch_tabular.models.common.layers.embeddings import Embedding2dLayer
+# from pytorch_tabular.models.common.layers.transformers import AppendCLSToken
 
 
 class SAINTTransformer(pl.LightningModule):
@@ -39,11 +40,12 @@ class SAINTTransformer(pl.LightningModule):
         # self.save_hyperparameters()
         self.config = config
 
-        self.embedding_layer = Embedding2dLayer(
+        self.embedding_layer = BatchedEmbedding(
             continuous_dim=continuous_dims, categorical_cardinality=categorical_dims or [], embedding_dim=d_model
         )
 
-        self.add_cls = AppendCLSToken(d_model, initialization="kaiming_uniform")
+        # self.add_cls = AppendCLSToken(d_model, initialization="kaiming_uniform")
+        self.race_projection = nn.Linear(d_model * 2, d_model)
 
         # Transformer block creations
         self.transformer_blocks = nn.ModuleList(
@@ -65,40 +67,61 @@ class SAINTTransformer(pl.LightningModule):
         self.test_metrics = None
 
     def forward(self, x: dict[str, torch.Tensor]):
-        # Squeeze out the batch dimension added by the dataloader
-        x = {k: v.squeeze(0) for k, v in x.items()}
-
         # Step 1: Embeddings
-        x = self.embedding_layer(x)  # Returns: [batch_size, num_features, d_model]
+        x: torch.Tensor = self.embedding_layer(x)  # Returns: [batch_size, horses_len, num_features, d_model]
 
-        # Step 2: Add class token
-        x = self.add_cls(x)
+        batch_size, horse_len, num_features, d_model = x.shape
+        race_outputs = []
 
-        # Step 3: Pass through transformer blocks
-        for block in self.transformer_blocks:
-            x = block(x)
+        # Process each race seperately to maintain race boundaries
+        for race_idx in range(batch_size):
+            race_x = x[race_idx]  # (horse_len, num_features, d_model)
 
-        # Step 4: Use class token for prediction
-        cls_token = x[:, -1]
+            # Add class token for the entire race at the horse level
+            race_cls_token = torch.zeros(1, num_features, d_model, device=race_x.device)
+            race_x_with_cls = torch.cat([race_x, race_cls_token], dim=0)  # (horse_len + 1, num_features, d_model)
 
-        # Step 5: Get logits before sigmoid for binary classification
-        logits = self.output_layer(cls_token)
+            # Pass through transformer blocks
+            for block in self.transformer_blocks:
+                race_x_with_cls = block(race_x_with_cls)
 
+            # Extract class token
+            race_cls = race_x_with_cls[-1]  # (num_features, d_model)
+            horse_representations = race_x_with_cls[:-1]  # (horse_len, num_features, d_model)
+
+            # Combine race context with each horse for prediction
+            race_context = race_cls.mean(dim=0).unsqueeze(0).expand(horse_len, -1)  # (horse_len, d_model)
+            horse_features = horse_representations.mean(dim=1)  # (horse_len, d_model)
+
+            # Combine horse features with race context
+            combined = torch.cat([horse_features, race_context], dim=-1)  # (horse_len, d_model * 2)
+            cls_tokens = self.race_projection(combined)  # (horse_len, d_model)
+
+            race_outputs.append(cls_tokens)
+
+        cls_tokens = torch.stack(race_outputs)
+
+        # Get logits before sigmoid for binary classification
+        logits = self.output_layer(cls_tokens)
         return logits
 
     def training_step(self, batch, batch_idx):
-        x, y = batch
+        x, y, attention_mask = batch
 
-        y = y.squeeze(0)  # Remove batch dimension from targets
-        y_hat = self(x)
-        y_hat = y_hat.squeeze(-1)  # Remove the last dimension
+        y_predict = self(x)  # (batch_size, max_horses, 1)
+        y_predict = y_predict.squeeze(-1)  # (batch_size, max_horses)
 
-        loss = f.binary_cross_entropy_with_logits(y_hat, y)
+        # Apply attention mask to loss computation
+        valid_mask = attention_mask.bool()  # Convert to boolean mask
+        y_predict_masked = y_predict[valid_mask]
+        y_masked = y[valid_mask]
 
-        # Calculate torch metrics
-        probs = torch.sigmoid(y_hat)
+        loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked)
 
-        self.train_acc(probs, y.int())
+        # Calculate torch metrics on valid positions only
+        probs = torch.sigmoid(y_predict_masked)
+
+        self.train_acc(probs, y_masked.int())
 
         self.log("train_acc", self.train_acc, on_step=True, prog_bar=False)
         self.log("train_loss", loss, on_step=True, prog_bar=False)
@@ -106,18 +129,22 @@ class SAINTTransformer(pl.LightningModule):
         return loss
 
     def test_step(self, batch, batch_idx):
-        x, y = batch
+        x, y, attention_mask = batch
 
-        y = y.squeeze(0)
-        y_hat = self(x)
-        y_hat = y_hat.squeeze(-1)
+        y_predict = self(x)
+        y_predict = y_predict.squeeze(-1)
+
+        # Apply attention mask
+        valid_mask = attention_mask.bool()
+        y_predict_masked = y_predict[valid_mask]
+        y_masked = y[valid_mask]
 
         # Calculate predictions
-        probs = torch.sigmoid(y_hat)
+        probs = torch.sigmoid(y_predict_masked)
         preds = (probs > 0.5).float()
 
         # Store results for later collection
-        result = {"test_probs": probs, "test_preds": preds, "test_targets": y}
+        result = {"test_probs": probs, "test_preds": preds, "test_targets": y_masked}
         self.test_step_outputs.append(result)
 
         return result
@@ -156,20 +183,24 @@ class SAINTTransformer(pl.LightningModule):
         return
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch
+        x, y, attention_mask = batch
 
-        y = y.squeeze(0)  # RACE AWARE: Remove batch dimension from targets
-        y_hat = self(x)
-        y_hat = y_hat.squeeze(-1)  # RACE AWARE: Remove the last dimension
+        y_predict = self(x)
+        y_predict = y_predict.squeeze(-1)
 
-        loss = f.binary_cross_entropy_with_logits(y_hat, y)
+        # Apply attention mask for loss computation
+        valid_mask = attention_mask.bool()
+        y_predict_masked = y_predict[valid_mask]
+        y_masked = y[valid_mask]
+
+        loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked)
 
         # Calculate torch metrics
-        probs = torch.sigmoid(y_hat)
+        probs = torch.sigmoid(y_predict_masked)
 
-        self.val_acc(probs, y.int())
-        self.val_auroc(probs, y.int())
-        self.val_f1(probs, y.int())
+        self.val_acc(probs, y_masked.int())
+        self.val_auroc(probs, y_masked.int())
+        self.val_f1(probs, y_masked.int())
 
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
         self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True)
