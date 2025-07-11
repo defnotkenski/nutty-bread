@@ -37,7 +37,7 @@ class SAINTTransformer(pl.LightningModule):
     ):
         super().__init__()
 
-        # self.save_hyperparameters()
+        self.save_hyperparameters()
         self.config = config
 
         self.embedding_layer = BatchedEmbedding(
@@ -45,6 +45,10 @@ class SAINTTransformer(pl.LightningModule):
         )
 
         # self.add_cls = AppendCLSToken(d_model, initialization="kaiming_uniform")
+
+        total_features = continuous_dims + len(categorical_dims)
+        self.race_cls_token = nn.Parameter(torch.randn(1, total_features, d_model) * 0.02)
+
         self.race_projection = nn.Linear(d_model * 2, d_model)
 
         # Transformer block creations
@@ -71,6 +75,11 @@ class SAINTTransformer(pl.LightningModule):
         x: torch.Tensor = self.embedding_layer(x)  # Returns: [batch_size, horses_len, num_features, d_model]
 
         batch_size, horse_len, num_features, d_model = x.shape
+
+        assert (
+            num_features == self.race_cls_token.shape[1]
+        ), f"Feature mismatch: {num_features} vs {self.race_cls_token.shape[1]}"
+
         race_outputs = []
 
         # Process each race seperately to maintain race boundaries
@@ -78,7 +87,7 @@ class SAINTTransformer(pl.LightningModule):
             race_x = x[race_idx]  # (horse_len, num_features, d_model)
 
             # Add class token for the entire race at the horse level
-            race_cls_token = torch.zeros(1, num_features, d_model, device=race_x.device)
+            race_cls_token = self.race_cls_token.expand(1, num_features, d_model)
             race_x_with_cls = torch.cat([race_x, race_cls_token], dim=0)  # (horse_len + 1, num_features, d_model)
 
             # Pass through transformer blocks
