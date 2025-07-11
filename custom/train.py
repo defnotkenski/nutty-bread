@@ -1,4 +1,5 @@
 import lightning.pytorch as pylightning
+import pandas as pd
 from lightning.pytorch.callbacks import Callback, ModelCheckpoint
 from lightning.pytorch.loggers import NeptuneLogger
 import torch
@@ -11,11 +12,7 @@ import modal
 from custom.models.saint_transformer.config import SAINTConfig
 from dataclasses import asdict
 from custom.models.saint_transformer.data_processing import collate_races
-
-# neptune_logger = NeptuneLogger(
-#     project="toastbutter/diabeticdonkey",
-#     api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4OTY0NjY1My00ZmViLTQxYzctOWIzNi1mNDJlNDdiNDk2NjIifQ==",
-# )
+from custom.commons.focal_loss import calculate_optimal_focal_loss_params
 
 
 modal_app = modal.App("neural-learning")
@@ -108,6 +105,10 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
     #     "categorical": preprocessed.categorical_tensor,
     # }
 
+    # Calculate optimal focal loss params
+    target_series = pd.Series(preprocessed.target_tensor.numpy().flatten())
+    alpha, gamma = calculate_optimal_focal_loss_params(target_series=target_series)
+
     # Create model
     saint_model = SAINTTransformer(
         continuous_dims=preprocessed.continuous_tensor.shape[1],
@@ -117,6 +118,8 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         d_model=config.d_model,
         num_heads=config.num_attention_heads,
         output_size=config.output_size,
+        focal_alpha=alpha,
+        focal_gamma=gamma,
         config=config,
     )
 
@@ -189,7 +192,7 @@ def run_with_modal() -> None:
 
     modal.interact()
 
-    modal_dataset_path = Path.cwd() / "datasets" / "sample_horses.csv"
+    modal_dataset_path = Path.cwd() / "datasets" / "sample_horses_v2.csv"
     train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=False, enable_logging=True)
 
     return
@@ -204,5 +207,5 @@ def main() -> None:
 if __name__ == "__main__":
     pass
 
-    dataset_path = Path.cwd().parent / "datasets" / "sample_horses.csv"
+    dataset_path = Path.cwd().parent / "datasets" / "sample_horses_v2.csv"
     train_model(path_to_csv=dataset_path, perform_eval=True, quiet_mode=False, enable_logging=False)

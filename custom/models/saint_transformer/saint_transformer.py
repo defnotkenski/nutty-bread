@@ -3,9 +3,11 @@ import torch
 import torch.nn as nn
 from custom.layers.dual_attention_layer import DualAttentionLayer
 from torchmetrics import Accuracy, F1Score, AUROC
-import torch.nn.functional as f
+
+# import torch.nn.functional as f
 from custom.models.saint_transformer.config import SAINTConfig
 from custom.commons.batched_embedding import BatchedEmbedding
+from custom.commons.focal_loss import FocalLoss
 from sklearn.metrics import (
     accuracy_score,
     roc_auc_score,
@@ -33,6 +35,8 @@ class SAINTTransformer(pl.LightningModule):
         num_heads: int,
         output_size: int,
         learning_rate: float,
+        focal_alpha: float,
+        focal_gamma: float,
         config: SAINTConfig,
     ):
         super().__init__()
@@ -60,6 +64,7 @@ class SAINTTransformer(pl.LightningModule):
         self.output_layer = nn.Linear(d_model, output_size)
 
         self.learning_rate = learning_rate
+        self.focal_loss = FocalLoss(alpha=focal_alpha, gamma=focal_gamma)
 
         # Initialize torch metrics
         self.train_acc = Accuracy(task="binary")
@@ -139,7 +144,8 @@ class SAINTTransformer(pl.LightningModule):
         y_predict_masked = y_predict[valid_mask]
         y_masked = y[valid_mask]
 
-        loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked)
+        # loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked)
+        loss = self.focal_loss(y_predict_masked, y_masked)
 
         # Calculate torch metrics on valid positions only
         probs = torch.sigmoid(y_predict_masked)
@@ -216,7 +222,8 @@ class SAINTTransformer(pl.LightningModule):
         y_predict_masked = y_predict[valid_mask]
         y_masked = y[valid_mask]
 
-        loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked)
+        # loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked)
+        loss = self.focal_loss(y_predict_masked, y_masked)
 
         # Calculate torch metrics
         probs = torch.sigmoid(y_predict_masked)
