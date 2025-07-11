@@ -38,8 +38,7 @@ def preprocess_df(df_path: Path):
 
     base_df = feature_config.df
 
-    # ===== RACE AWARE: Create race boundaries to be used when batching during training =====
-
+    # Create race boundaries to be used when batching during training
     race_boundaries = []
     current_start = 0
 
@@ -50,8 +49,6 @@ def preprocess_df(df_path: Path):
         race_boundaries.append([current_start, current_start + race_size])
 
         current_start += race_size
-
-    # ===== END RACE AWARE =====
 
     # Extract target col
     target_tensor = torch.tensor(base_df["target"].to_numpy(), dtype=torch.float32)
@@ -71,7 +68,7 @@ def preprocess_df(df_path: Path):
     # Store as a torch tensor
     cont_tensor = torch.tensor(cont_cols_sentinel, dtype=torch.float32)
 
-    # Extract categorical cols
+    # Extract and map categorical cols to integers
     cat_cols_df = base_df.select(feature_config.categorical_cols).fill_null("<UNK>")
 
     encoded_cats = []
