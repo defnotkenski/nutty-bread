@@ -3,13 +3,14 @@ import torch.nn as nn
 import torch
 from torch.nn import Linear
 import math
+from torch import Tensor
 
 # from custom.blocks.activation_blocks import StableMax
 
 
-def compute_attention(x: torch.Tensor, q_proj: Linear, k_proj: Linear, v_proj: Linear, num_heads: int, dropout: nn.Dropout):
+def compute_attention(x: Tensor, q_proj: Linear, k_proj: Linear, v_proj: Linear, num_heads: int, dropout: nn.Dropout):
     """Computes attention made into a reusable block for inter and intra attention."""
-    batch_size, num_features, d_model = x.shape
+    horse_len, num_features, d_model = x.shape
     heads_dim = d_model // num_heads
 
     # Create Q, K, V
@@ -18,8 +19,8 @@ def compute_attention(x: torch.Tensor, q_proj: Linear, k_proj: Linear, v_proj: L
     values = v_proj(x)
 
     # Reshape for multi-head processing
-    def reshape_for_heads(tensor: torch.Tensor):
-        reshaped = tensor.view(batch_size, num_features, num_heads, heads_dim)
+    def reshape_for_heads(tensor: Tensor):
+        reshaped = tensor.view(horse_len, num_features, num_heads, heads_dim)
         return reshaped.transpose(1, 2)
 
     q = reshape_for_heads(queries)
@@ -28,12 +29,9 @@ def compute_attention(x: torch.Tensor, q_proj: Linear, k_proj: Linear, v_proj: L
 
     # Scaled dot-product attention
     attention_scores = torch.matmul(q, k.transpose(-2, -1))
-
     scale = math.sqrt(heads_dim)
     attention_scores = attention_scores / scale
 
-    # stablemax = StableMax(dim=-1)
-    # attention_weights = stablemax(attention_scores)  # Experimental: Use softmax as fallback
     attention_weights = f.softmax(attention_scores, dim=-1)
 
     # Add attention dropout
@@ -44,7 +42,7 @@ def compute_attention(x: torch.Tensor, q_proj: Linear, k_proj: Linear, v_proj: L
 
     # Concatenate heads back together
     attended_transposed = attended.transpose(1, 2)
-    attended_concat = attended_transposed.contiguous().view(batch_size, num_features, d_model)
+    attended_concat = attended_transposed.contiguous().view(horse_len, num_features, d_model)
 
     return attended_concat
 
@@ -61,7 +59,7 @@ class IntraRowAttention(nn.Module):
         self.key_projection = nn.Linear(d_model, d_model)
         self.value_projection = nn.Linear(d_model, d_model)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: Tensor):
         return compute_attention(
             x,
             q_proj=self.query_projection,
@@ -84,13 +82,13 @@ class InterRowAttention(nn.Module):
         self.key_projection = nn.Linear(d_model, d_model)
         self.value_projection = nn.Linear(d_model, d_model)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: Tensor, attention_mask: Tensor = None):
         horse_len, num_features, d_model = x.shape
 
         # Apply projections to original tensor
-        q: torch.Tensor = self.query_projection(x)  # (horse_len, num_features, d_model)
-        k: torch.Tensor = self.key_projection(x)  # (horse_len, num_features, d_model)
-        v: torch.Tensor = self.value_projection(x)  # (horse_len, num_features, d_model)
+        q: Tensor = self.query_projection(x)  # (horse_len, num_features, d_model)
+        k: Tensor = self.key_projection(x)  # (horse_len, num_features, d_model)
+        v: Tensor = self.value_projection(x)  # (horse_len, num_features, d_model)
 
         # Flatten each horse's features for intersample attention
         flattened_dim = num_features * d_model
@@ -108,10 +106,21 @@ class InterRowAttention(nn.Module):
         v_heads = v_flat.view(horse_len, self.num_heads, head_dim).transpose(0, 1)  # (num_heads, horse_len, head_dim)
 
         # Compute attention for each head across horses (intersample attention)
-        attention_scores = torch.matmul(q_heads, k_heads.transpose(-2, -1))
-
+        attention_scores: Tensor = torch.matmul(q_heads, k_heads.transpose(-2, -1))
         scale = math.sqrt(head_dim)
         attention_scores = attention_scores / scale
+
+        # Apply attention mask
+        if attention_mask is not None:
+            # Attention mask shape: (horse_len,) where 1=real, 0=padded
+
+            # Create 2D mask: (horse_len, horse_len)
+            mask_2d = attention_mask.unsqueeze(1) * attention_mask.unsqueeze(0)
+
+            # Expand for multihead: (num_heads, horse_len, horse_len)
+            mask_expanded = mask_2d.unsqueeze(0).expand(self.num_heads, -1, -1)
+
+            attention_scores = attention_scores.masked_fill(mask_expanded == 0, -1e9)
 
         attention_weights = f.softmax(attention_scores, dim=-1)
         attention_weights = self.dropout(attention_weights)

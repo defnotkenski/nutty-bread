@@ -70,7 +70,7 @@ class SAINTTransformer(pl.LightningModule):
         self.test_step_outputs = []
         self.test_metrics = None
 
-    def forward(self, x: dict[str, torch.Tensor]):
+    def forward(self, x: dict[str, torch.Tensor], attention_mask: torch.Tensor):
         # Step 1: Embeddings
         x: torch.Tensor = self.embedding_layer(x)  # Returns: [batch_size, horses_len, num_features, d_model]
 
@@ -84,29 +84,43 @@ class SAINTTransformer(pl.LightningModule):
 
         # Process each race seperately to maintain race boundaries
         for race_idx in range(batch_size):
-            race_x = x[race_idx]  # (horse_len, num_features, d_model)
+            race_mask = attention_mask[race_idx]  # (max_horses,)
 
-            # Add class token for the entire race at the horse level
+            race_x = x[race_idx]  # (max_horses, num_features, d_model)
+
+            # Add class token
             race_cls_token = self.race_cls_token.expand(1, num_features, d_model)
-            race_x_with_cls = torch.cat([race_x, race_cls_token], dim=0)  # (horse_len + 1, num_features, d_model)
+            race_x_with_cls = torch.cat([race_x, race_cls_token], dim=0)  # (max_horses + 1, num_features, d_model)
+
+            # Create mask for class token
+            cls_mask = torch.ones(1, device=race_mask.device)
+            full_mask = torch.cat([race_mask, cls_mask], dim=0)  # (max_horses + 1,)
+
+            assert (
+                full_mask.sum() > 0
+            ), f"Race {race_idx}: All positions masked - race_mask sum: {race_mask.sum()}, cls_mask sum: {cls_mask.sum()}"
 
             # Pass through transformer blocks
             for block in self.transformer_blocks:
-                race_x_with_cls = block(race_x_with_cls)
+                race_x_with_cls = block(race_x_with_cls, full_mask)
 
             # Extract class token
-            race_cls = race_x_with_cls[-1]  # (num_features, d_model)
-            horse_representations = race_x_with_cls[:-1]  # (horse_len, num_features, d_model)
+            race_cls = race_x_with_cls[-1]  # class token
+            horse_representations = race_x_with_cls[:-1]  # All horses (including padding)
 
-            # Combine race context with each horse for prediction
-            race_context = race_cls.mean(dim=0).unsqueeze(0).expand(horse_len, -1)  # (horse_len, d_model)
-            horse_features = horse_representations.mean(dim=1)  # (horse_len, d_model)
+            # Apply mask when computing features (only use real horses)
+            num_real_horses = int(race_mask.sum())
+            race_context = race_cls.mean(dim=0).unsqueeze(0).expand(num_real_horses, -1)
+            horse_features = horse_representations[:num_real_horses].mean(dim=1)  # Only real horses
 
             # Combine horse features with race context
-            combined = torch.cat([horse_features, race_context], dim=-1)  # (horse_len, d_model * 2)
-            cls_tokens = self.race_projection(combined)  # (horse_len, d_model)
+            combined = torch.cat([horse_features, race_context], dim=-1)
+            cls_tokens = self.race_projection(combined)
 
-            race_outputs.append(cls_tokens)
+            padded_cls_tokens = torch.zeros(horse_len, d_model, device=cls_tokens.device)
+            padded_cls_tokens[:num_real_horses] = cls_tokens
+
+            race_outputs.append(padded_cls_tokens)
 
         cls_tokens = torch.stack(race_outputs)
 
@@ -117,7 +131,7 @@ class SAINTTransformer(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y, attention_mask = batch
 
-        y_predict = self(x)  # (batch_size, max_horses, 1)
+        y_predict = self(x, attention_mask)  # (batch_size, max_horses, 1)
         y_predict = y_predict.squeeze(-1)  # (batch_size, max_horses)
 
         # Apply attention mask to loss computation
@@ -140,7 +154,7 @@ class SAINTTransformer(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         x, y, attention_mask = batch
 
-        y_predict = self(x)
+        y_predict = self(x, attention_mask)
         y_predict = y_predict.squeeze(-1)
 
         # Apply attention mask
@@ -194,7 +208,7 @@ class SAINTTransformer(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x, y, attention_mask = batch
 
-        y_predict = self(x)
+        y_predict = self(x, attention_mask)
         y_predict = y_predict.squeeze(-1)
 
         # Apply attention mask for loss computation

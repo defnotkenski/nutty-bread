@@ -27,10 +27,10 @@ class DualAttentionLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.output_projection = nn.Linear(d_model * 2, d_model)
 
-    def forward(self, x):
+    def forward(self, x, attention_mask=None):
         # Dual attention blocks
         intra_out = self.intra_attention(x)
-        inter_out = self.inter_attention(x)
+        inter_out = self.inter_attention(x, attention_mask)
 
         # Combine dual attention and project
         combined = torch.cat([intra_out, inter_out], dim=-1)

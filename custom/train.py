@@ -190,7 +190,7 @@ def run_with_modal() -> None:
     modal.interact()
 
     modal_dataset_path = Path.cwd() / "datasets" / "sample_horses.csv"
-    train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=True, enable_logging=True)
+    train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=False, enable_logging=True)
 
     return
 
