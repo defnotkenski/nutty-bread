@@ -1,10 +1,11 @@
 import torch.nn as nn
 import torch
 from custom.blocks.attention_blocks import IntraRowAttention, InterRowAttention
+from custom.blocks.lwta_blocks import LWTA
 
 
 class DualAttentionLayer(nn.Module):
-    def __init__(self, d_model: int = 64, dropout: float = 0.1, num_heads: int = 4):
+    def __init__(self, d_model: int = 64, dropout: float = 0.1, num_heads: int = 4, num_competitors: int = 4):
         super().__init__()
 
         self.d_model = d_model
@@ -18,9 +19,12 @@ class DualAttentionLayer(nn.Module):
         self.layer_norm_1 = nn.LayerNorm(d_model)
         self.layer_norm_2 = nn.LayerNorm(d_model)
 
+        self.lwta = LWTA(d_model * 4, num_competitors=num_competitors, temp=1.0)
+
         self.feed_forward = nn.Sequential(
             nn.Linear(d_model, d_model * 4),
-            nn.GELU(),
+            # nn.GELU(),
+            self.lwta,
             nn.Linear(d_model * 4, d_model),
         )
 

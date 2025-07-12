@@ -21,8 +21,8 @@ modal_img = (
     .add_local_dir(Path.cwd() / "custom", remote_path="/root/custom")
     .add_local_dir(Path.cwd() / "datasets", remote_path="/root/datasets")
 )
-modal_gpu = "A100-40GB"
-# modal_gpu = "H100"
+# modal_gpu = "A100-40GB"
+modal_gpu = "H100"
 
 torch.set_float32_matmul_precision("medium")
 

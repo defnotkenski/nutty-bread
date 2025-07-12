@@ -8,6 +8,7 @@ from torchmetrics import Accuracy, F1Score, AUROC
 from custom.models.saint_transformer.config import SAINTConfig
 from custom.commons.batched_embedding import BatchedEmbedding
 from prodigyplus.prodigy_plus_schedulefree import ProdigyPlusScheduleFree
+from custom.blocks.attention_pooling_blocks import AttentionPooling
 from sklearn.metrics import (
     accuracy_score,
     roc_auc_score,
@@ -52,8 +53,13 @@ class SAINTTransformer(pl.LightningModule):
         self.race_projection = nn.Linear(d_model * 2, d_model)
 
         self.transformer_blocks = nn.ModuleList(
-            [DualAttentionLayer(d_model=d_model, num_heads=num_heads) for _ in range(num_block_layers)]
+            [
+                DualAttentionLayer(d_model=d_model, num_heads=num_heads, num_competitors=config.num_competitors)
+                for _ in range(num_block_layers)
+            ]
         )
+
+        self.pooler = AttentionPooling(d_model)
 
         self.output_layer = nn.Linear(d_model, output_size)
 
@@ -107,11 +113,19 @@ class SAINTTransformer(pl.LightningModule):
 
             # Apply mask when computing features (only use real horses)
             num_real_horses = int(race_mask.sum())
-            race_context = race_cls.mean(dim=0).unsqueeze(0).expand(num_real_horses, -1)
-            horse_features = horse_representations[:num_real_horses].mean(dim=1)  # Only real horses
+            horse_reps_real = horse_representations[:num_real_horses]
+
+            # horse_features = horse_representations[:num_real_horses].mean(dim=1)
+            horse_features: Tensor = self.pooler(horse_reps_real)
+
+            # race_context = race_cls.mean(dim=0).unsqueeze(0).expand(num_real_horses, -1)
+            race_context: Tensor = self.pooler(race_cls.unsqueeze(0)).squeeze(0)
 
             # Combine horse features with race context
-            combined = torch.cat([horse_features, race_context], dim=-1)
+            race_context_expanded = race_context.unsqueeze(0).expand(num_real_horses, -1)
+
+            combined = torch.cat([horse_features, race_context_expanded], dim=-1)
+
             cls_tokens = self.race_projection(combined)
 
             padded_cls_tokens = torch.zeros(horse_len, d_model, device=cls_tokens.device)

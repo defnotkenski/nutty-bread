@@ -5,8 +5,6 @@ from torch.nn import Linear
 import math
 from torch import Tensor
 
-# from custom.blocks.activation_blocks import StableMax
-
 
 def compute_attention(x: Tensor, q_proj: Linear, k_proj: Linear, v_proj: Linear, num_heads: int, dropout: nn.Dropout):
     """Computes attention made into a reusable block for inter and intra attention."""

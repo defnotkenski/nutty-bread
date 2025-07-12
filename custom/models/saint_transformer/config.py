@@ -5,7 +5,7 @@ from typing import Optional
 @dataclass
 class SAINTConfig:
     # Notes
-    notes: str = "Running weighted BCE."
+    notes: str = "Running experimental: Attention pooling. Stochastic competition attention."
 
     # Model hyperparams
     learning_rate: float = 1.0  # Prev. 0.0001
@@ -22,6 +22,9 @@ class SAINTConfig:
     max_epochs: int = 30
     val_check_interval: float = 1.0
     enable_checkpointing: bool = True
+
+    # Attention hyperparams
+    num_competitors: int = 4
 
     # Dataloader hyperparams
     pin_memory: bool = True
