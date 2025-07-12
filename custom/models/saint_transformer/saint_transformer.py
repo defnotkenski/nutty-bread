@@ -136,18 +136,9 @@ class SAINTTransformer(pl.LightningModule):
         return loss
 
     def test_step(self, batch, batch_idx):
-        x, y, attention_mask = batch
+        _, probs, y_masked = self._compute_step(batch)
 
-        y_predict = self(x, attention_mask)
-        y_predict = y_predict.squeeze(-1)
-
-        # Apply attention mask
-        valid_mask = attention_mask.bool()
-        y_predict_masked = y_predict[valid_mask]
-        y_masked = y[valid_mask]
-
-        # Calculate predictions
-        probs = torch.sigmoid(y_predict_masked)
+        # Get the predictions based on probabilities
         preds = (probs > 0.5).float()
 
         # Store results for later collection
