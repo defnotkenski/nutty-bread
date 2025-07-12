@@ -1,7 +1,8 @@
 import lightning.pytorch as pylightning
 import pandas as pd
-from lightning.pytorch.callbacks import Callback, ModelCheckpoint
+from lightning.pytorch.callbacks import Callback, ModelCheckpoint, EarlyStopping
 from lightning.pytorch.loggers import NeptuneLogger
+from lightning.pytorch.tuner import Tuner
 import torch
 from torch.utils.data import DataLoader
 from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset
@@ -104,8 +105,14 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         config=config,
     )
 
+    early_stopping = EarlyStopping(
+        monitor="val_loss",
+        patience=8,
+        mode="min",
+    )
+
     checkpoint_callback = ModelCheckpoint(
-        monitor="train_loss",
+        monitor="val_loss",
         dirpath="checkpoints/",
         filename="saint-{epoch:02d}-{val_loss:.2f}",
         save_top_k=1,
@@ -132,7 +139,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
     else:
         neptune_logger = False
 
-    callbacks_list: list = [checkpoint_callback]
+    callbacks_list: list = [checkpoint_callback, early_stopping]
     if quiet_mode:
         callbacks_list.append(CustomCallback())
 
@@ -143,12 +150,18 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         max_epochs=config.max_epochs,
         accelerator="auto",
         devices=1,
+        precision=config.precision,
         val_check_interval=config.val_check_interval,
         enable_checkpointing=config.enable_checkpointing,
         logger=neptune_logger if enable_logging else False,
         enable_progress_bar=not quiet_mode,
         callbacks=callbacks_list,
     )
+
+    tuner = Tuner(trainer)
+    lr_finder = tuner.lr_find(saint_model, train_dataloader, validation_dataloader)
+
+    saint_model.learning_rate = lr_finder.suggestion()
 
     trainer.fit(saint_model, train_dataloaders=train_dataloader, val_dataloaders=validation_dataloader)
 

@@ -7,7 +7,8 @@ from custom.layers.dual_attention_layer import DualAttentionLayer
 from torchmetrics import Accuracy, F1Score, AUROC
 from custom.models.saint_transformer.config import SAINTConfig
 from custom.commons.batched_embedding import BatchedEmbedding
-from prodigyplus.prodigy_plus_schedulefree import ProdigyPlusScheduleFree
+
+# from prodigyplus.prodigy_plus_schedulefree import ProdigyPlusScheduleFree
 from custom.blocks.attention_pooling_blocks import AttentionPooling
 from sklearn.metrics import (
     accuracy_score,
@@ -54,7 +55,9 @@ class SAINTTransformer(pl.LightningModule):
 
         self.transformer_blocks = nn.ModuleList(
             [
-                DualAttentionLayer(d_model=d_model, num_heads=num_heads, num_competitors=config.num_competitors)
+                DualAttentionLayer(
+                    d_model=d_model, num_heads=num_heads, num_competitors=config.num_competitors, config=config
+                )
                 for _ in range(num_block_layers)
             ]
         )
@@ -168,9 +171,9 @@ class SAINTTransformer(pl.LightningModule):
         all_targets = torch.cat([x["test_targets"] for x in self.test_step_outputs])
 
         # Convert to numpy for sklearn
-        probs_np = all_probs.cpu().numpy()
-        preds_np = all_preds.cpu().numpy()
-        targets_np = all_targets.cpu().numpy()
+        probs_np = all_probs.cpu().to(torch.float32).numpy()
+        preds_np = all_preds.cpu().to(torch.float32).numpy()
+        targets_np = all_targets.cpu().to(torch.float32).numpy()
 
         # Calculate sklearn metrics
         accuracy = accuracy_score(targets_np, preds_np)
@@ -210,19 +213,25 @@ class SAINTTransformer(pl.LightningModule):
 
     def configure_optimizers(self):
         # Configure optimizers
-        # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=0.05)
-        optimizer = ProdigyPlusScheduleFree(
-            self.parameters(),
-            lr=self.learning_rate,
-            use_speed=self.config.prodigy_use_speed,
-            use_orthograd=self.config.prodigy_use_orthograd,
-            use_focus=self.config.prodigy_use_focus,
-        )
+        # optimizer = ProdigyPlusScheduleFree(
+        #     self.parameters(),
+        #     lr=self.learning_rate,
+        #     weight_decay=self.config.weight_decay,
+        #     use_speed=self.config.prodigy_use_speed,
+        #     use_orthograd=self.config.prodigy_use_orthograd,
+        #     use_focus=self.config.prodigy_use_focus,
+        # )
+
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=self.config.weight_decay)
 
         # Configure schedulers
-        # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=10)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer=optimizer, T_max=self.config.max_epochs, eta_min=1e-6
+        )
 
-        return optimizer  # If using a scheduler, need to return [optimizer], [scheduler] as a tuple
+        return [optimizer], [
+            {"scheduler": scheduler, "interval": "epoch"}
+        ]  # If using a scheduler, need to return [optimizer], [scheduler] as a tuple
 
     def _compute_step(self, batch: tuple[dict[str, Tensor], Tensor, Tensor]) -> tuple[Tensor, Tensor, Tensor]:
         x, y, attention_mask = batch
@@ -234,6 +243,10 @@ class SAINTTransformer(pl.LightningModule):
         valid_mask = attention_mask.bool()
         y_predict_masked = y_predict[valid_mask]
         y_masked = y[valid_mask]
+
+        # Label smoothing
+        if self.config.label_smoothing:
+            y_masked = y_masked * 0.9 + (1 - y_masked) * 0.1
 
         # Compute loss
         loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked, pos_weight=self.pos_weight)

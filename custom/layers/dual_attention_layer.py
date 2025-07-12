@@ -2,10 +2,11 @@ import torch.nn as nn
 import torch
 from custom.blocks.attention_blocks import IntraRowAttention, InterRowAttention
 from custom.blocks.lwta_blocks import LWTA
+from custom.models.saint_transformer.config import SAINTConfig
 
 
 class DualAttentionLayer(nn.Module):
-    def __init__(self, d_model: int = 64, dropout: float = 0.1, num_heads: int = 4, num_competitors: int = 4):
+    def __init__(self, d_model: int = 64, num_heads: int = 4, num_competitors: int = 4, config: SAINTConfig = None):
         super().__init__()
 
         self.d_model = d_model
@@ -13,8 +14,8 @@ class DualAttentionLayer(nn.Module):
 
         assert d_model % (num_heads // 2) == 0, f"d_model must be divisible by heads per attention"
 
-        self.intra_attention = IntraRowAttention(d_model=d_model, num_heads=num_heads // 2, dropout=dropout)
-        self.inter_attention = InterRowAttention(d_model=d_model, num_heads=num_heads // 2, dropout=dropout)
+        self.intra_attention = IntraRowAttention(d_model=d_model, num_heads=num_heads // 2, dropout=config.dropout)
+        self.inter_attention = InterRowAttention(d_model=d_model, num_heads=num_heads // 2, dropout=config.dropout)
 
         self.layer_norm_1 = nn.LayerNorm(d_model)
         self.layer_norm_2 = nn.LayerNorm(d_model)
@@ -28,7 +29,7 @@ class DualAttentionLayer(nn.Module):
             nn.Linear(d_model * 4, d_model),
         )
 
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(config.dropout)
         self.output_projection = nn.Linear(d_model * 2, d_model)
 
     def forward(self, x, attention_mask=None):
