@@ -1,13 +1,13 @@
 import lightning.pytorch as pl
 import torch
+from torch import Tensor
 import torch.nn as nn
+import torch.nn.functional as f
 from custom.layers.dual_attention_layer import DualAttentionLayer
 from torchmetrics import Accuracy, F1Score, AUROC
-
-# import torch.nn.functional as f
 from custom.models.saint_transformer.config import SAINTConfig
 from custom.commons.batched_embedding import BatchedEmbedding
-from custom.commons.focal_loss import FocalLoss
+from prodigyplus.prodigy_plus_schedulefree import ProdigyPlusScheduleFree
 from sklearn.metrics import (
     accuracy_score,
     roc_auc_score,
@@ -16,13 +16,6 @@ from sklearn.metrics import (
     matthews_corrcoef,
     classification_report,
 )
-
-# from prodigyopt import Prodigy
-from prodigyplus.prodigy_plus_schedulefree import ProdigyPlusScheduleFree
-
-# Import the actual components from pytorch-tabular
-# from pytorch_tabular.models.common.layers.embeddings import Embedding2dLayer
-# from pytorch_tabular.models.common.layers.transformers import AppendCLSToken
 
 
 class SAINTTransformer(pl.LightningModule):
@@ -35,43 +28,42 @@ class SAINTTransformer(pl.LightningModule):
         num_heads: int,
         output_size: int,
         learning_rate: float,
-        focal_alpha: float,
-        focal_gamma: float,
+        pos_weight: float,
         config: SAINTConfig,
     ):
         super().__init__()
 
+        # === Configuration ===
         self.save_hyperparameters()
         self.config = config
 
+        # === Training Parameters ===
+        self.learning_rate = learning_rate
+        self.pos_weight = torch.tensor(pos_weight)
+
+        # === Model Architecture ===
         self.embedding_layer = BatchedEmbedding(
             continuous_dim=continuous_dims, categorical_cardinality=categorical_dims or [], embedding_dim=d_model
         )
 
-        # self.add_cls = AppendCLSToken(d_model, initialization="kaiming_uniform")
-
         total_features = continuous_dims + len(categorical_dims)
-        self.race_cls_token = nn.Parameter(torch.randn(1, total_features, d_model) * 0.02)
 
+        self.race_cls_token = nn.Parameter(torch.randn(1, total_features, d_model) * 0.02)
         self.race_projection = nn.Linear(d_model * 2, d_model)
 
-        # Transformer block creations
         self.transformer_blocks = nn.ModuleList(
             [DualAttentionLayer(d_model=d_model, num_heads=num_heads) for _ in range(num_block_layers)]
         )
 
-        # Classification head
         self.output_layer = nn.Linear(d_model, output_size)
 
-        self.learning_rate = learning_rate
-        self.focal_loss = FocalLoss(alpha=focal_alpha, gamma=focal_gamma)
-
-        # Initialize torch metrics
+        # === Metrics ===
         self.train_acc = Accuracy(task="binary")
         self.val_acc = Accuracy(task="binary")
         self.val_auroc = AUROC(task="binary")
         self.val_f1 = F1Score(task="binary")
 
+        # === Test Tracking ===
         self.test_step_outputs = []
         self.test_metrics = None
 
@@ -134,21 +126,7 @@ class SAINTTransformer(pl.LightningModule):
         return logits
 
     def training_step(self, batch, batch_idx):
-        x, y, attention_mask = batch
-
-        y_predict = self(x, attention_mask)  # (batch_size, max_horses, 1)
-        y_predict = y_predict.squeeze(-1)  # (batch_size, max_horses)
-
-        # Apply attention mask to loss computation
-        valid_mask = attention_mask.bool()  # Convert to boolean mask
-        y_predict_masked = y_predict[valid_mask]
-        y_masked = y[valid_mask]
-
-        # loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked)
-        loss = self.focal_loss(y_predict_masked, y_masked)
-
-        # Calculate torch metrics on valid positions only
-        probs = torch.sigmoid(y_predict_masked)
+        loss, probs, y_masked = self._compute_step(batch)
 
         self.train_acc(probs, y_masked.int())
 
@@ -212,21 +190,7 @@ class SAINTTransformer(pl.LightningModule):
         return
 
     def validation_step(self, batch, batch_idx):
-        x, y, attention_mask = batch
-
-        y_predict = self(x, attention_mask)
-        y_predict = y_predict.squeeze(-1)
-
-        # Apply attention mask for loss computation
-        valid_mask = attention_mask.bool()
-        y_predict_masked = y_predict[valid_mask]
-        y_masked = y[valid_mask]
-
-        # loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked)
-        loss = self.focal_loss(y_predict_masked, y_masked)
-
-        # Calculate torch metrics
-        probs = torch.sigmoid(y_predict_masked)
+        loss, probs, y_masked = self._compute_step(batch)
 
         self.val_acc(probs, y_masked.int())
         self.val_auroc(probs, y_masked.int())
@@ -242,7 +206,6 @@ class SAINTTransformer(pl.LightningModule):
     def configure_optimizers(self):
         # Configure optimizers
         # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=0.05)
-        # optimizer = Prodigy(self.parameters(), lr=self.learning_rate, weight_decay=0.05, d_coef=1.0)
         optimizer = ProdigyPlusScheduleFree(
             self.parameters(),
             lr=self.learning_rate,
@@ -255,3 +218,22 @@ class SAINTTransformer(pl.LightningModule):
         # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=10)
 
         return optimizer  # If using a scheduler, need to return [optimizer], [scheduler] as a tuple
+
+    def _compute_step(self, batch: tuple[dict[str, Tensor], Tensor, Tensor]) -> tuple[Tensor, Tensor, Tensor]:
+        x, y, attention_mask = batch
+
+        y_predict: Tensor = self(x, attention_mask)
+        y_predict = y_predict.squeeze(-1)
+
+        # Apply attention mask for loss computation
+        valid_mask = attention_mask.bool()
+        y_predict_masked = y_predict[valid_mask]
+        y_masked = y[valid_mask]
+
+        # Compute loss
+        loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked, pos_weight=self.pos_weight)
+
+        # Compute probabilities
+        probs = torch.sigmoid(y_predict_masked)
+
+        return loss, probs, y_masked

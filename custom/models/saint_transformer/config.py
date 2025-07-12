@@ -5,7 +5,7 @@ from typing import Optional
 @dataclass
 class SAINTConfig:
     # Notes
-    notes: str = "Updated the dataset to v2. Running focal loss."
+    notes: str = "Running weighted BCE."
 
     # Model hyperparams
     learning_rate: float = 1.0  # Prev. 0.0001

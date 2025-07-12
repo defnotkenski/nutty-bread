@@ -12,7 +12,6 @@ import modal
 from custom.models.saint_transformer.config import SAINTConfig
 from dataclasses import asdict
 from custom.models.saint_transformer.data_processing import collate_races
-from custom.commons.focal_loss import calculate_optimal_focal_loss_params
 
 
 modal_app = modal.App("neural-learning")
@@ -22,8 +21,8 @@ modal_img = (
     .add_local_dir(Path.cwd() / "custom", remote_path="/root/custom")
     .add_local_dir(Path.cwd() / "datasets", remote_path="/root/datasets")
 )
-# modal_gpu = "A100-40GB"
-modal_gpu = "H100"
+modal_gpu = "A100-40GB"
+# modal_gpu = "H100"
 
 torch.set_float32_matmul_precision("medium")
 
@@ -86,28 +85,11 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         collate_fn=collate_races,
     )
 
-    # Create test tabular data
-    # batch_size = 2
-    # num_continuous_features = 90
-
-    # Categorical features: city (vocab size 5), gender (vocab size 2)
-    # categorical_cardinalities = [5, 2]
-
-    # Simulate tabular data
-    # test_data = {
-    #     "continuous": torch.randn(batch_size, num_continuous_features),
-    #     "categorical": torch.tensor([[2, 1], [0, 0]]),
-    # }
-
-    # Create tabular data
-    # test_data = {
-    #     "continuous": preprocessed.continuous_tensor,
-    #     "categorical": preprocessed.categorical_tensor,
-    # }
-
-    # Calculate optimal focal loss params
+    # Calculate pos_weight for weighted BCE loss fn
     target_series = pd.Series(preprocessed.target_tensor.numpy().flatten())
-    alpha, gamma = calculate_optimal_focal_loss_params(target_series=target_series)
+    pos_count = target_series.sum()
+    neg_count = len(target_series) - pos_count
+    pos_weight = neg_count / pos_count
 
     # Create model
     saint_model = SAINTTransformer(
@@ -118,8 +100,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         d_model=config.d_model,
         num_heads=config.num_attention_heads,
         output_size=config.output_size,
-        focal_alpha=alpha,
-        focal_gamma=gamma,
+        pos_weight=pos_weight,
         config=config,
     )
 
@@ -132,6 +113,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         verbose=False,
     )
 
+    # Configure logging
     if enable_logging:
         neptune_logger = NeptuneLogger(
             project="toastbutter/diabeticdonkey",
@@ -154,6 +136,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
     if quiet_mode:
         callbacks_list.append(CustomCallback())
 
+    # Configure trainer and begin training
     trainer = pylightning.Trainer(
         accumulate_grad_batches=config.accumulate_grad_batches,
         gradient_clip_val=config.gradient_clip_val,
@@ -169,6 +152,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
 
     trainer.fit(saint_model, train_dataloaders=train_dataloader, val_dataloaders=validation_dataloader)
 
+    # Perform evaluations after model training
     if perform_eval:
         # Load the best checkpoint for evaluation
         best_model_path = checkpoint_callback.best_model_path
