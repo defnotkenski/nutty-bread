@@ -128,20 +128,17 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         )
 
         config_dict = asdict(config)
-
-        neptune_logger.log_hyperparams(
-            {
-                "optimizer": "prodigy-plus",
-                "attention_activation": "softmax",
-                **config_dict,
-            }
-        )
+        neptune_logger.log_hyperparams({**config_dict})
     else:
         neptune_logger = False
 
-    callbacks_list: list = [checkpoint_callback, early_stopping]
+    callbacks_list: list = [checkpoint_callback]
+
     if quiet_mode:
         callbacks_list.append(CustomCallback())
+
+    if config.early_stopping:
+        callbacks_list.append(early_stopping)
 
     # Configure trainer and begin training
     trainer = pylightning.Trainer(
@@ -158,11 +155,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         callbacks=callbacks_list,
     )
 
-    tuner = Tuner(trainer)
-    lr_finder = tuner.lr_find(saint_model, train_dataloader, validation_dataloader)
-
-    saint_model.learning_rate = lr_finder.suggestion()
-
+    # Begin training the model
     trainer.fit(saint_model, train_dataloaders=train_dataloader, val_dataloaders=validation_dataloader)
 
     # Perform evaluations after model training

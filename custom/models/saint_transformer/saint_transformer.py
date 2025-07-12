@@ -7,8 +7,7 @@ from custom.layers.dual_attention_layer import DualAttentionLayer
 from torchmetrics import Accuracy, F1Score, AUROC
 from custom.models.saint_transformer.config import SAINTConfig
 from custom.commons.batched_embedding import BatchedEmbedding
-
-# from prodigyplus.prodigy_plus_schedulefree import ProdigyPlusScheduleFree
+from prodigyplus.prodigy_plus_schedulefree import ProdigyPlusScheduleFree
 from custom.blocks.attention_pooling_blocks import AttentionPooling
 from sklearn.metrics import (
     accuracy_score,
@@ -143,17 +142,17 @@ class SAINTTransformer(pl.LightningModule):
         return logits
 
     def training_step(self, batch, batch_idx):
-        loss, probs, y_masked = self._compute_step(batch)
+        loss, probs, y_masked = self._compute_step(batch, apply_label_smoothing=True)
 
         self.train_acc(probs, y_masked.int())
 
-        self.log("train_acc", self.train_acc, on_step=True, prog_bar=False)
-        self.log("train_loss", loss, on_step=True, prog_bar=False)
+        self.log("train_acc", self.train_acc, on_step=True, on_epoch=False, prog_bar=False)
+        self.log("train_loss", loss, on_step=True, on_epoch=False, prog_bar=False)
 
         return loss
 
     def test_step(self, batch, batch_idx):
-        _, probs, y_masked = self._compute_step(batch)
+        _, probs, y_masked = self._compute_step(batch, apply_label_smoothing=False)
 
         # Get the predictions based on probabilities
         preds = (probs > 0.5).float()
@@ -198,7 +197,7 @@ class SAINTTransformer(pl.LightningModule):
         return
 
     def validation_step(self, batch, batch_idx):
-        loss, probs, y_masked = self._compute_step(batch)
+        loss, probs, y_masked = self._compute_step(batch, apply_label_smoothing=False)
 
         self.val_acc(probs, y_masked.int())
         self.val_auroc(probs, y_masked.int())
@@ -213,27 +212,27 @@ class SAINTTransformer(pl.LightningModule):
 
     def configure_optimizers(self):
         # Configure optimizers
-        # optimizer = ProdigyPlusScheduleFree(
-        #     self.parameters(),
-        #     lr=self.learning_rate,
-        #     weight_decay=self.config.weight_decay,
-        #     use_speed=self.config.prodigy_use_speed,
-        #     use_orthograd=self.config.prodigy_use_orthograd,
-        #     use_focus=self.config.prodigy_use_focus,
-        # )
-
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=self.config.weight_decay)
-
-        # Configure schedulers
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer=optimizer, T_max=self.config.max_epochs, eta_min=1e-6
+        optimizer = ProdigyPlusScheduleFree(
+            self.parameters(),
+            lr=self.learning_rate,
+            weight_decay=self.config.weight_decay,
+            use_speed=self.config.prodigy_use_speed,
+            use_orthograd=self.config.prodigy_use_orthograd,
+            use_focus=self.config.prodigy_use_focus,
         )
 
-        return [optimizer], [
-            {"scheduler": scheduler, "interval": "epoch"}
-        ]  # If using a scheduler, need to return [optimizer], [scheduler] as a tuple
+        # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=self.config.weight_decay)
 
-    def _compute_step(self, batch: tuple[dict[str, Tensor], Tensor, Tensor]) -> tuple[Tensor, Tensor, Tensor]:
+        # Configure schedulers
+        # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        #     optimizer=optimizer, T_max=self.config.max_epochs, eta_min=1e-6
+        # )
+
+        return optimizer  # If using a scheduler, need to return [optimizer], [scheduler] as a tuple
+
+    def _compute_step(
+        self, batch: tuple[dict[str, Tensor], Tensor, Tensor], apply_label_smoothing: bool
+    ) -> tuple[Tensor, Tensor, Tensor]:
         x, y, attention_mask = batch
 
         y_predict: Tensor = self(x, attention_mask)
@@ -245,8 +244,8 @@ class SAINTTransformer(pl.LightningModule):
         y_masked = y[valid_mask]
 
         # Label smoothing
-        if self.config.label_smoothing:
-            y_masked = y_masked * 0.9 + (1 - y_masked) * 0.1
+        # if self.config.label_smoothing and apply_label_smoothing:
+        #     y_masked = y_masked * 0.9 + (1 - y_masked) * 0.1
 
         # Compute loss
         loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked, pos_weight=self.pos_weight)
