@@ -32,6 +32,24 @@ def preprocess_df(df_path: Path):
     base_df = base_df.cast(COLUMN_TYPES)
     base_df = base_df.sort(["race_date", "track_code", "race_number", "dollar_odds"])
 
+    base_df = base_df.drop(
+        [
+            "footnotes",
+            "comment",
+            "owner_full_name",
+            "jockey_last_name",
+            "jockey_first_name",
+            "trainer_type",
+            "post_position",
+            "program_number",
+        ]
+    )
+
+    # We need to drop high cardinality cols from the working dataframe
+    _cardinality = base_df.select(pl.selectors.string()).select(
+        [pl.col(col).n_unique().alias(f"{col}_cardinality") for col in base_df.select(pl.selectors.string()).columns]
+    )
+
     # Feature extraction
     feature_extractor = FeatureProcessor(df=base_df, target_type="place")
     feature_config = feature_extractor.get_dataframe()
