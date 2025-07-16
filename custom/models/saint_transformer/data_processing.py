@@ -54,6 +54,23 @@ def preprocess_df(df_path: Path):
     feature_extractor = FeatureProcessor(df=base_df, target_type="place")
     feature_config = feature_extractor.get_dataframe()
 
+    # Experimental: Write final train df to csv.
+    _save_path = Path(__file__).parent / "sample_horses_v2_post.csv"
+
+    save_df = feature_config.df.select(
+        [*feature_config.continuous_cols, *feature_config.categorical_cols, *feature_config.target_cols]
+    )
+
+    cols_drop = [col for col in save_df.columns if col.endswith("_is_null")]
+    save_df = save_df.drop(cols_drop).drop_nulls()
+
+    _cardinality = save_df.select(pl.selectors.string()).select(
+        [pl.col(col).n_unique().alias(f"{col}_cardinality") for col in save_df.select(pl.selectors.string()).columns]
+    )
+
+    # save_df.write_csv(_save_path)
+
+    # Set the working df moving forward
     base_df = feature_config.df
 
     # Create race boundaries to be used when batching during training
