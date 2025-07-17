@@ -1,6 +1,5 @@
 import polars as pl
 from pathlib import Path
-from datasets.sample_horses_schema import COLUMN_TYPES
 
 
 def train() -> None:
