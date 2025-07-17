@@ -3,8 +3,13 @@ from pathlib import Path
 
 
 def train() -> None:
-    script_dir = Path(__file__).parent / "samples.csv"
-    _df = pl.read_csv(script_dir, infer_schema=True)
+    script_dir_samples = Path(__file__).parent / "samples.csv"
+    script_dir_ground = Path(
+        "/Users/kennylao/PycharmProjects/neural-learning/custom/models/saint_transformer/sample_horses_v2_post.csv"
+    )
+
+    _sample_df = pl.read_csv(script_dir_samples, infer_schema=True)
+    _sample_ground_df = pl.read_csv(script_dir_ground, infer_schema=True)
 
     return
 
