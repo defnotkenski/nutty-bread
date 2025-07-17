@@ -2,30 +2,15 @@ import lightning.pytorch as pylightning
 import pandas as pd
 from lightning.pytorch.callbacks import Callback, ModelCheckpoint, EarlyStopping
 from lightning.pytorch.loggers import NeptuneLogger
-from lightning.pytorch.tuner import Tuner
 import torch
 from torch.utils.data import DataLoader
 from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset
 from custom.models.saint_transformer.saint_transformer import SAINTTransformer
 from pathlib import Path
 from sklearn.model_selection import train_test_split
-import modal
 from custom.models.saint_transformer.config import SAINTConfig
 from dataclasses import asdict
 from custom.models.saint_transformer.data_processing import collate_races
-
-
-modal_app = modal.App("neural-learning")
-modal_img = (
-    modal.Image.debian_slim(python_version="3.12.2")
-    .pip_install_from_pyproject("pyproject.toml")
-    .add_local_dir(Path.cwd() / "custom", remote_path="/root/custom")
-    .add_local_dir(Path.cwd() / "datasets", remote_path="/root/datasets")
-)
-# modal_gpu = "A100-40GB"
-modal_gpu = "H100"
-
-torch.set_float32_matmul_precision("medium")
 
 
 class CustomCallback(Callback):
@@ -173,29 +158,3 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
     print("✅ FT-Transformer structure works!")
 
     return
-
-
-@modal_app.function(gpu=modal_gpu, image=modal_img, timeout=10800, cpu=2)
-def run_with_modal() -> None:
-    has_cuda = torch.cuda.is_available()
-    print(f"CUDA status: {has_cuda}")
-
-    modal.interact()
-
-    modal_dataset_path = Path.cwd() / "datasets" / "sample_horses_v2.csv"
-    train_model(path_to_csv=modal_dataset_path, perform_eval=True, quiet_mode=False, enable_logging=False)
-
-    return
-
-
-@modal_app.local_entrypoint()
-def main() -> None:
-    run_with_modal.remote()
-    return
-
-
-if __name__ == "__main__":
-    pass
-
-    dataset_path = Path.cwd().parent / "datasets" / "sample_horses_v2.csv"
-    train_model(path_to_csv=dataset_path, perform_eval=True, quiet_mode=False, enable_logging=False)
