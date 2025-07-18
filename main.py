@@ -1,4 +1,5 @@
-from custom.train import train_model
+from custom.models.saint_transformer.train import train_model
+from custom.models.tab_pfn.train import train_model as train_pfn
 from pathlib import Path
 import modal
 import torch
@@ -6,6 +7,8 @@ import torch
 modal_app = modal.App("neural-learning")
 modal_img = (
     modal.Image.debian_slim(python_version="3.12.2")
+    .apt_install("git")
+    .run_commands("pip install --no-binary=tabpfn 'tabpfn @ git+https://github.com/PriorLabs/TabPFN.git@main'")
     .pip_install_from_pyproject("pyproject.toml")
     .add_local_dir(Path.cwd() / "custom", remote_path="/root/custom")
     .add_local_dir(Path.cwd() / "datasets", remote_path="/root/datasets")
@@ -24,7 +27,8 @@ def run_with_modal() -> None:
 
     modal.interact()
 
-    train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True, quiet_mode=False, enable_logging=True)
+    # train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True, quiet_mode=False, enable_logging=True)
+    train_pfn()
 
     return
 

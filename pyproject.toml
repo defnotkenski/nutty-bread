@@ -11,8 +11,13 @@ dependencies = [
     "polars>=1.31.0",
     "prodigy-plus-schedule-free==2.0.0rc2",
     "prodigyopt>=1.1.2",
+    "pyarrow>=21.0.0",
     "pytorch-tabular>=1.1.1",
     "requests>=2.32.4",
     "rich>=14.0.0",
+    "tabpfn",
     "torch>=2.7.1",
 ]
+
+[tool.uv.sources]
+tabpfn = { git = "https://github.com/PriorLabs/TabPFN.git", rev = "main" }
