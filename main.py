@@ -1,4 +1,4 @@
-from custom.models.saint_transformer.train_lightning import train_model
+from custom.models.saint_transformer.train import train_model
 from custom.models.tab_pfn.train import train_model as train_pfn
 from pathlib import Path
 import modal
