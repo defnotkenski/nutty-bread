@@ -1,3 +1,6 @@
+import sys
+import traceback
+
 import polars as pl
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -12,9 +15,7 @@ from torch.optim import Adam, Optimizer
 from torch.utils.data import DataLoader
 from dataclasses import dataclass
 from tqdm import tqdm
-from sklearn.metrics import roc_auc_score, log_loss
-import tabpfn
-import inspect
+from sklearn.metrics import roc_auc_score, log_loss, accuracy_score
 
 
 @dataclass
@@ -27,6 +28,7 @@ class ClassifierConfig:
 @dataclass
 class MasterConfig:
     classifier_config: ClassifierConfig
+    learning_rate: float = 1e-5
     epochs: int = 10
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     test_size: float = 0.10
@@ -76,7 +78,7 @@ def setup_model_and_optimizer(config: MasterConfig) -> tuple[TabPFNClassifier, O
     )
 
     classifier._initialize_model_variables()
-    optimizer = Adam(classifier.model_.parameters(), lr=1e-5)
+    optimizer = Adam(classifier.model_.parameters(), lr=config.learning_rate)
 
     print(f"Using device: {"cuda" if torch.cuda.is_available() else "cpu"}")
     print(f"------\n")
@@ -91,20 +93,28 @@ def evaluate_model(
     y_train: np.ndarray,
     x_test: np.ndarray,
     y_test: np.ndarray,
-) -> tuple[float, float]:
+) -> tuple[float, float, float]:
     """Evaluates the model's performance on the test set."""
     eval_classifier = clone_model_for_evaluation(classifier, eval_config, TabPFNClassifier)
     eval_classifier.fit(x_train, y_train)
 
     try:
         probabilities = eval_classifier.predict_proba(x_test)
+        predictions = np.argmax(probabilities, axis=1)
+
+        if probabilities.shape[1] == 2:
+            probabilities = probabilities[:, 1]
+
         roc_auc = roc_auc_score(y_test, probabilities, multi_class="ovr", average="weighted")
         log_loss_score = log_loss(y_test, probabilities)
+        accuracy = accuracy_score(y_test, predictions)
     except Exception as e:
         print(f"An error occured during model evaluation: {e}")
-        roc_auc, log_loss_score = np.nan, np.nan
+        # roc_auc, log_loss_score = np.nan, np.nan
+        traceback.print_exc()
+        sys.exit(1)
 
-    return roc_auc, log_loss_score
+    return roc_auc, log_loss_score, accuracy
 
 
 def train_model() -> None:
@@ -112,6 +122,7 @@ def train_model() -> None:
     master_config = MasterConfig(classifier_config=classifier_config)
 
     x_train, x_test, y_train, y_test = prep_data(config=master_config)
+
     classifier, optimizer = setup_model_and_optimizer(config=master_config)
 
     splitter = partial(train_test_split, test_size=master_config.test_size)
@@ -148,10 +159,12 @@ def train_model() -> None:
 
                 p_bar.set_postfix(loss=f"{loss.item():.4f}")
 
-        epoch_roc, epoch_log_loss = evaluate_model(classifier, eval_config, x_train, y_train, x_test, y_test)
+        epoch_roc, epoch_log_loss, epoch_accuracy = evaluate_model(classifier, eval_config, x_train, y_train, x_test, y_test)
 
         status = "initial" if epoch == 0 else f"Epoch: {epoch}"
-        print(f"{status} Evaluation | Test ROC: {epoch_roc:.4f}, Test LogLoss: {epoch_log_loss:.4f}\n")
+        print(
+            f"{status} Evaluation | Test ROC: {epoch_roc:.4f}, Test LogLoss: {epoch_log_loss:.4f}, Test Accuracy: {epoch_accuracy:.4f}\n"
+        )
 
     print(f"--- 🪿 Finetuning Finished ---")
 

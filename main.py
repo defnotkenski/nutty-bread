@@ -8,8 +8,23 @@ modal_app = modal.App("neural-learning")
 modal_img = (
     modal.Image.debian_slim(python_version="3.12.2")
     .apt_install("git")
-    .run_commands("pip install --no-binary=tabpfn 'tabpfn @ git+https://github.com/PriorLabs/TabPFN.git@main'")
-    .pip_install_from_pyproject("pyproject.toml")
+    .pip_install(
+        [
+            "torch",
+            "lightning",
+            "black",
+            "modal",
+            "neptune",
+            "polars",
+            "prodigy-plus-schedule-free",
+            "prodigyopt",
+            "pyarrow",
+            "requests",
+            "rich",
+        ]
+    )
+    .pip_install("git+https://github.com/manujosephv/pytorch_tabular.git@main")
+    .pip_install("git+https://github.com/PriorLabs/TabPFN.git@main")
     .add_local_dir(Path.cwd() / "custom", remote_path="/root/custom")
     .add_local_dir(Path.cwd() / "datasets", remote_path="/root/datasets")
 )
