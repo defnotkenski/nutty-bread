@@ -5,7 +5,7 @@ from lightning.pytorch.loggers import NeptuneLogger
 import torch
 from torch.utils.data import DataLoader
 from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset
-from custom.models.saint_transformer.saint_transformer import SAINTTransformer
+from custom.models.saint_transformer.saint_lightning import SAINTTransformer
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from custom.models.saint_transformer.config import SAINTConfig
