@@ -180,7 +180,7 @@ class FeatureProcessor:
         )
 
         working_df = working_df.rename(
-            {col: f"recent_0_{col.replace("_recent_0", "")}" for col in working_df.columns if col.endswith("_recent_0")}
+            {col: f"recent_0_{col.replace('_recent_0', '')}" for col in working_df.columns if col.endswith("_recent_0")}
         )
 
         return working_df
