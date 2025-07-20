@@ -1,4 +1,4 @@
-# User defined
+# Project specific
 
 # CLAUDE
 .claude
@@ -147,7 +147,6 @@ cython_debug/
 out/
 
 # Rider
-.idea/
 *.sln.iml
 
 # macOS
@@ -201,9 +200,8 @@ mlruns/
 *.parquet
 *.feather
 *.hdf5
-*.h5
 data/
-datasets/
+datasets/deprecated/
 raw_data/
 processed_data/
 test_data/
