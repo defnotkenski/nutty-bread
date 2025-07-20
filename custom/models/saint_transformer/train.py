@@ -17,8 +17,12 @@ def prepare_data(path_to_csv: Path, config: SAINTConfig):
     preprocessed = preprocess_df(df_path=path_to_csv)
     dataset = SAINTDataset(preprocessed)
 
-    train_idx, temp_idx = train_test_split(range(len(dataset)), test_size=0.2, shuffle=config.shuffle, random_state=42)
-    validate_idx, eval_idx = train_test_split(temp_idx, test_size=0.5, shuffle=config.shuffle, random_state=42)
+    train_idx, temp_idx = train_test_split(
+        range(len(dataset)), test_size=0.1, shuffle=config.shuffle, random_state=config.random_state
+    )
+    validate_idx, eval_idx = train_test_split(
+        temp_idx, test_size=0.5, shuffle=config.shuffle, random_state=config.random_state
+    )
 
     # Create subset datasets
     train_dataset = torch.utils.data.Subset(dataset, train_idx)

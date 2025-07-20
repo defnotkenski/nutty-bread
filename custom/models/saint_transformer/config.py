@@ -8,7 +8,7 @@ class SAINTConfig:
     notes: str = "Running experimental: Attention pooling. Stochastic competition attention."
 
     # Model hyperparams
-    learning_rate: float = 1.0
+    learning_rate: float = 1e-5
     d_model: int = 64
     num_block_layers: int = 4
     num_attention_heads: int = 8
@@ -17,6 +17,7 @@ class SAINTConfig:
     label_smoothing: bool = False
 
     # Training hyperparams
+    random_state: int = 777
     batch_size: int = 32
     num_workers: int = 6
     accumulate_grad_batches: int = 1
