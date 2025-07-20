@@ -1210,9 +1210,7 @@ name = "neural-learning"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "black" },
     { name = "lightning" },
-    { name = "modal" },
     { name = "neptune" },
     { name = "polars" },
     { name = "prodigy-plus-schedule-free" },
@@ -1225,11 +1223,15 @@ dependencies = [
     { name = "torch" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "black" },
+    { name = "modal" },
+]
+
 [package.metadata]
 requires-dist = [
-    { name = "black", specifier = ">=25.1.0" },
     { name = "lightning", specifier = ">=2.5.2" },
-    { name = "modal", specifier = ">=1.0.5" },
     { name = "neptune", specifier = ">=1.14.0" },
     { name = "polars", specifier = ">=1.31.0" },
     { name = "prodigy-plus-schedule-free", specifier = "==2.0.0rc2" },
@@ -1240,6 +1242,12 @@ requires-dist = [
     { name = "rich", specifier = ">=14.0.0" },
     { name = "tabpfn", git = "https://github.com/PriorLabs/TabPFN.git?rev=main" },
     { name = "torch", specifier = ">=2.7.1" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black", specifier = ">=25.1.0" },
+    { name = "modal", specifier = ">=1.1.0" },
 ]
 
 [[package]]
