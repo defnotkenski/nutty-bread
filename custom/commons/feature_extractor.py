@@ -283,7 +283,7 @@ class FeatureProcessor:
 
             working_df = working_df.rename(
                 {
-                    col: f"opp_{i+1}_recent_0_{col.replace(f"_opp_{i+1}_recent_0", "")}"
+                    col: f"opp_{i+1}_recent_0_{col.replace(f'_opp_{i+1}_recent_0', '')}"
                     for col in working_df.columns
                     if col.endswith(f"_opp_{i+1}_recent_0")
                 }
