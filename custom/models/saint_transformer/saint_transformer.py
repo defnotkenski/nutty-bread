@@ -1,25 +1,14 @@
-import lightning.pytorch as pl
 import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as f
 from custom.layers.dual_attention_layer import DualAttentionLayer
-from torchmetrics import Accuracy, F1Score, AUROC
 from custom.models.saint_transformer.config import SAINTConfig
 from custom.commons.batched_embedding import BatchedEmbedding
-from prodigyplus.prodigy_plus_schedulefree import ProdigyPlusScheduleFree
 from custom.blocks.attention_pooling_blocks import AttentionPooling
-from sklearn.metrics import (
-    accuracy_score,
-    roc_auc_score,
-    f1_score,
-    cohen_kappa_score,
-    matthews_corrcoef,
-    classification_report,
-)
 
 
-class SAINTTransformer(pl.LightningModule):
+class SAINTTransformer(nn.Module):
     def __init__(
         self,
         continuous_dims,
@@ -35,7 +24,6 @@ class SAINTTransformer(pl.LightningModule):
         super().__init__()
 
         # === Configuration ===
-        self.save_hyperparameters()
         self.config = config
 
         # === Training Parameters ===
@@ -64,16 +52,6 @@ class SAINTTransformer(pl.LightningModule):
         self.pooler = AttentionPooling(d_model)
 
         self.output_layer = nn.Linear(d_model, output_size)
-
-        # === Metrics ===
-        self.train_acc = Accuracy(task="binary")
-        self.val_acc = Accuracy(task="binary")
-        self.val_auroc = AUROC(task="binary")
-        self.val_f1 = F1Score(task="binary")
-
-        # === Test Tracking ===
-        self.test_step_outputs = []
-        self.test_metrics = None
 
     def forward(self, x: dict[str, torch.Tensor], attention_mask: torch.Tensor):
         # Step 1: Embeddings
@@ -141,96 +119,96 @@ class SAINTTransformer(pl.LightningModule):
         logits = self.output_layer(cls_tokens)
         return logits
 
-    def training_step(self, batch, batch_idx):
-        loss, probs, y_masked = self._compute_step(batch, apply_label_smoothing=True)
+    # def training_step(self, batch, batch_idx):
+    #     loss, probs, y_masked = self._compute_step(batch, apply_label_smoothing=True)
+    #
+    #     self.train_acc(probs, y_masked.int())
+    #
+    #     self.log("train_acc", self.train_acc, on_step=True, on_epoch=False, prog_bar=False)
+    #     self.log("train_loss", loss, on_step=True, on_epoch=False, prog_bar=False)
+    #
+    #     return loss
 
-        self.train_acc(probs, y_masked.int())
+    # def test_step(self, batch, batch_idx):
+    #     _, probs, y_masked = self._compute_step(batch, apply_label_smoothing=False)
+    #
+    #     # Get the predictions based on probabilities
+    #     preds = (probs > 0.5).float()
+    #
+    #     # Store results for later collection
+    #     result = {"test_probs": probs, "test_preds": preds, "test_targets": y_masked}
+    #     self.test_step_outputs.append(result)
+    #
+    #     return result
 
-        self.log("train_acc", self.train_acc, on_step=True, on_epoch=False, prog_bar=False)
-        self.log("train_loss", loss, on_step=True, on_epoch=False, prog_bar=False)
+    # def on_test_epoch_end(self) -> None:
+    #     # Lightning automatically passes collected outputs
+    #     all_probs = torch.cat([x["test_probs"] for x in self.test_step_outputs])
+    #     all_preds = torch.cat([x["test_preds"] for x in self.test_step_outputs])
+    #     all_targets = torch.cat([x["test_targets"] for x in self.test_step_outputs])
+    #
+    #     # Convert to numpy for sklearn
+    #     probs_np = all_probs.cpu().to(torch.float32).numpy()
+    #     preds_np = all_preds.cpu().to(torch.float32).numpy()
+    #     targets_np = all_targets.cpu().to(torch.float32).numpy()
+    #
+    #     # Calculate sklearn metrics
+    #     accuracy = accuracy_score(targets_np, preds_np)
+    #     auroc = roc_auc_score(targets_np, probs_np)
+    #     f1 = f1_score(targets_np, preds_np)
+    #     kappa = cohen_kappa_score(targets_np, preds_np)
+    #     mcc = matthews_corrcoef(targets_np, preds_np)
+    #     report = classification_report(targets_np, preds_np, target_names=["Fucked", "Not Fucked"])
+    #
+    #     self.test_metrics = {"accuracy": accuracy, "auroc": auroc, "f1": f1, "kappa": kappa, "mcc": mcc}
+    #
+    #     print(f"===== 🪿 Eval Results 🦖 =====")
+    #     print(f"Test Accuracy: {accuracy:.4f}")
+    #     print(f"Test AUROC: {auroc:.4f}")
+    #     print(f"Test F1: {f1:.4f}")
+    #     print(f"Test Kappa: {kappa:.4f}")
+    #     print(f"Test MCC: {mcc:.4f}")
+    #     print(f"Test Report:\n{report}")
+    #
+    #     self.test_step_outputs.clear()
+    #
+    #     return
 
-        return loss
+    # def validation_step(self, batch, batch_idx):
+    #     loss, probs, y_masked = self._compute_step(batch, apply_label_smoothing=False)
+    #
+    #     self.val_acc(probs, y_masked.int())
+    #     self.val_auroc(probs, y_masked.int())
+    #     self.val_f1(probs, y_masked.int())
+    #
+    #     self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+    #     self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True)
+    #     self.log("val_auroc", self.val_auroc, on_epoch=True, prog_bar=False)
+    #     self.log("val_f1", self.val_f1, on_epoch=True, prog_bar=False)
+    #
+    #     return loss
 
-    def test_step(self, batch, batch_idx):
-        _, probs, y_masked = self._compute_step(batch, apply_label_smoothing=False)
+    # def configure_optimizers(self):
+    #     # Configure optimizers
+    #     optimizer = ProdigyPlusScheduleFree(
+    #         self.parameters(),
+    #         lr=self.learning_rate,
+    #         weight_decay=self.config.weight_decay,
+    #         use_speed=self.config.prodigy_use_speed,
+    #         use_orthograd=self.config.prodigy_use_orthograd,
+    #         use_focus=self.config.prodigy_use_focus,
+    #     )
+    #
+    #     # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=self.config.weight_decay)
+    #
+    #     # Configure schedulers
+    #     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #     #     optimizer=optimizer, T_max=self.config.max_epochs, eta_min=1e-6
+    #     # )
+    #
+    #     return optimizer  # If using a scheduler, need to return [optimizer], [scheduler] as a tuple
 
-        # Get the predictions based on probabilities
-        preds = (probs > 0.5).float()
-
-        # Store results for later collection
-        result = {"test_probs": probs, "test_preds": preds, "test_targets": y_masked}
-        self.test_step_outputs.append(result)
-
-        return result
-
-    def on_test_epoch_end(self) -> None:
-        # Lightning automatically passes collected outputs
-        all_probs = torch.cat([x["test_probs"] for x in self.test_step_outputs])
-        all_preds = torch.cat([x["test_preds"] for x in self.test_step_outputs])
-        all_targets = torch.cat([x["test_targets"] for x in self.test_step_outputs])
-
-        # Convert to numpy for sklearn
-        probs_np = all_probs.cpu().to(torch.float32).numpy()
-        preds_np = all_preds.cpu().to(torch.float32).numpy()
-        targets_np = all_targets.cpu().to(torch.float32).numpy()
-
-        # Calculate sklearn metrics
-        accuracy = accuracy_score(targets_np, preds_np)
-        auroc = roc_auc_score(targets_np, probs_np)
-        f1 = f1_score(targets_np, preds_np)
-        kappa = cohen_kappa_score(targets_np, preds_np)
-        mcc = matthews_corrcoef(targets_np, preds_np)
-        report = classification_report(targets_np, preds_np, target_names=["Fucked", "Not Fucked"])
-
-        self.test_metrics = {"accuracy": accuracy, "auroc": auroc, "f1": f1, "kappa": kappa, "mcc": mcc}
-
-        print(f"===== 🪿 Eval Results 🦖 =====")
-        print(f"Test Accuracy: {accuracy:.4f}")
-        print(f"Test AUROC: {auroc:.4f}")
-        print(f"Test F1: {f1:.4f}")
-        print(f"Test Kappa: {kappa:.4f}")
-        print(f"Test MCC: {mcc:.4f}")
-        print(f"Test Report:\n{report}")
-
-        self.test_step_outputs.clear()
-
-        return
-
-    def validation_step(self, batch, batch_idx):
-        loss, probs, y_masked = self._compute_step(batch, apply_label_smoothing=False)
-
-        self.val_acc(probs, y_masked.int())
-        self.val_auroc(probs, y_masked.int())
-        self.val_f1(probs, y_masked.int())
-
-        self.log("val_loss", loss, on_epoch=True, prog_bar=True)
-        self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True)
-        self.log("val_auroc", self.val_auroc, on_epoch=True, prog_bar=False)
-        self.log("val_f1", self.val_f1, on_epoch=True, prog_bar=False)
-
-        return loss
-
-    def configure_optimizers(self):
-        # Configure optimizers
-        optimizer = ProdigyPlusScheduleFree(
-            self.parameters(),
-            lr=self.learning_rate,
-            weight_decay=self.config.weight_decay,
-            use_speed=self.config.prodigy_use_speed,
-            use_orthograd=self.config.prodigy_use_orthograd,
-            use_focus=self.config.prodigy_use_focus,
-        )
-
-        # optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=self.config.weight_decay)
-
-        # Configure schedulers
-        # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        #     optimizer=optimizer, T_max=self.config.max_epochs, eta_min=1e-6
-        # )
-
-        return optimizer  # If using a scheduler, need to return [optimizer], [scheduler] as a tuple
-
-    def _compute_step(
+    def compute_step(
         self, batch: tuple[dict[str, Tensor], Tensor, Tensor], apply_label_smoothing: bool
     ) -> tuple[Tensor, Tensor, Tensor]:
         x, y, attention_mask = batch
@@ -244,8 +222,8 @@ class SAINTTransformer(pl.LightningModule):
         y_masked = y[valid_mask]
 
         # Label smoothing
-        # if self.config.label_smoothing and apply_label_smoothing:
-        #     y_masked = y_masked * 0.9 + (1 - y_masked) * 0.1
+        if self.config.label_smoothing and apply_label_smoothing:
+            y_masked = y_masked * 0.9 + (1 - y_masked) * 0.1
 
         # Compute loss
         loss = f.binary_cross_entropy_with_logits(y_predict_masked, y_masked, pos_weight=self.pos_weight)

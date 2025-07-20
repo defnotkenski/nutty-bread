@@ -2,6 +2,7 @@ import numpy as np
 import polars as pl
 from pathlib import Path
 import torch
+from torch import Tensor
 from sklearn.preprocessing import LabelEncoder
 from dataclasses import dataclass
 from torch.utils.data import Dataset
@@ -113,7 +114,7 @@ def preprocess_df(df_path: Path, return_feature_config: bool = False):
     )
 
 
-def collate_races(batch):
+def collate_races(batch) -> tuple[dict[str:Tensor], Tensor, Tensor]:
     """
     Collate function to pad races to same length and create attention masks.
     Args:

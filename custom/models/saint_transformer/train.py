@@ -1,7 +1,4 @@
-import lightning.pytorch as pylightning
 import pandas as pd
-from lightning.pytorch.callbacks import Callback, ModelCheckpoint, EarlyStopping
-from lightning.pytorch.loggers import NeptuneLogger
 import torch
 from torch.utils.data import DataLoader
 from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset
@@ -9,22 +6,13 @@ from custom.models.saint_transformer.saint_transformer import SAINTTransformer
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from custom.models.saint_transformer.config import SAINTConfig
-from dataclasses import asdict
 from custom.models.saint_transformer.data_processing import collate_races
+from sklearn.metrics import roc_auc_score, accuracy_score
+from tqdm import tqdm
 
 
-class CustomCallback(Callback):
-    def on_train_epoch_start(self, trainer: pylightning.Trainer, pl_module: pylightning.LightningModule) -> None:
-        epoch = trainer.current_epoch
-        print(f"Starting epoch: {epoch}")
-
-        return
-
-
-def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_logging: bool) -> None:
-    print("Testing SAINT-Heavy transformer infrastructure...")
-
-    config = SAINTConfig()
+def prepare_data(path_to_csv: Path, config: SAINTConfig):
+    print("--- Data Preparation ---")
 
     preprocessed = preprocess_df(df_path=path_to_csv)
     dataset = SAINTDataset(preprocessed)
@@ -37,11 +25,8 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
     val_dataset = torch.utils.data.Subset(dataset, validate_idx)
     eval_dataset = torch.utils.data.Subset(dataset, eval_idx)
 
-    # Check target distribution in validation set
-    _val_targets = [dataset[i][1] for i in validate_idx[:10]]  # Check first 10
-
     # Create dataloaders
-    batch_size = config.batch_size  # DO NOT CHANGE THE BATCH SIZE HOE.
+    batch_size = config.batch_size
     num_workers = config.num_workers
     pin_memory = config.pin_memory
     shuffle = config.shuffle
@@ -54,7 +39,7 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         pin_memory=pin_memory,
         collate_fn=collate_races,
     )
-    validation_dataloader = DataLoader(
+    val_dataloader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=shuffle,
@@ -70,6 +55,52 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         pin_memory=pin_memory,
         collate_fn=collate_races,
     )
+
+    print(
+        f"Loaded, processed, and split data: {len(train_dataset)} train, {len(val_dataset)} val, {len(eval_dataset)} test samples."
+    )
+    print(f"------\n")
+
+    return train_dataloader, val_dataloader, eval_dataloader, preprocessed
+
+
+def validate_model(model: SAINTTransformer, dataloader: DataLoader, device: torch.device):
+    model.eval()
+
+    all_losses = []
+    all_probs = []
+    all_targets = []
+
+    with torch.no_grad():
+        for batch in dataloader:
+            x, y, attention_mask = batch
+            x = {k: v.to(device) for k, v in x.items()}
+            y, attention_mask = y.to(device), attention_mask.to(device)
+
+            loss, probs, y_masked = model.compute_step((x, y, attention_mask), False)
+
+            all_losses.append(loss.item())
+            all_probs.append(probs.detach().cpu())
+            all_targets.append(y_masked.detach().cpu())
+
+    # --- Calculate metrics ---
+    avg_loss = sum(all_losses) / len(all_losses)
+    all_probs = torch.cat(all_probs)
+    all_targets = torch.cat(all_targets)
+
+    accuracy = accuracy_score(all_targets, (all_probs > 0.5).float())
+    auroc = roc_auc_score(all_targets, all_probs)
+
+    return avg_loss, accuracy, auroc
+
+
+def train_model(path_to_csv: Path, perform_eval: bool) -> None:
+    print("Testing SAINT-Heavy transformer infrastructure...")
+
+    config = SAINTConfig()
+    config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    train_dataloader, val_dataloader, eval_dataloader, preprocessed = prepare_data(path_to_csv, config)
 
     # Calculate pos_weight for weighted BCE loss fn
     target_series = pd.Series(preprocessed.target_tensor.numpy().flatten())
@@ -90,71 +121,57 @@ def train_model(path_to_csv: Path, perform_eval: bool, quiet_mode: bool, enable_
         config=config,
     )
 
-    early_stopping = EarlyStopping(
-        monitor="val_loss",
-        patience=8,
-        mode="min",
-    )
+    # --- Move the model to the GPU if CUDA is available ---
+    device = config.device
+    saint_model.to(device)
 
-    checkpoint_callback = ModelCheckpoint(
-        monitor="val_loss",
-        dirpath="checkpoints/",
-        filename="saint-{epoch:02d}-{val_loss:.2f}",
-        save_top_k=1,
-        mode="min",
-        verbose=False,
-    )
+    # --- Create the optimizer ---
+    optimizer = torch.optim.AdamW(saint_model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.max_epochs)
 
-    # Configure logging
-    if enable_logging:
-        neptune_logger = NeptuneLogger(
-            project="toastbutter/diabeticdonkey",
-            api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4OTY0NjY1My00ZmViLTQxYzctOWIzNi1mNDJlNDdiNDk2NjIifQ==",
+    # --- Finetuning and Evaluation Loop ---
+    print("--- Starting Finetuning & Evaluation ---")
+
+    for epoch in range(config.max_epochs + 1):
+        if epoch > 0:
+            p_bar = tqdm(train_dataloader, desc=f"Training Epoch {epoch}")
+
+            saint_model.train()
+            for batch in p_bar:
+                x, y, attention_mask = batch
+
+                # Move to device
+                x = {k: v.to(device) for k, v in x.items()}
+                y, attention_mask = y.to(device), attention_mask.to(device)
+
+                # Forward pass
+                optimizer.zero_grad()
+                loss, probs, y_masked = saint_model.compute_step((x, y, attention_mask), True)
+                loss.backward()
+
+                # Step forward with optimizer or scheduler
+                optimizer.step()
+
+                p_bar.set_postfix(loss=f"{loss.item():.4f}")
+
+            # Scheduler step after epoch
+            # scheduler.step()
+
+        # --- Evaluation loop ---
+        epoch_avg_loss, epoch_accuracy, epoch_auroc = validate_model(saint_model, val_dataloader, config.device)
+        status = "Initial" if epoch == 0 else f"Epoch: {epoch}"
+
+        print(
+            f"{status} Validation | Accuracy: {epoch_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}, ROC: {epoch_auroc:.4f}\n"
         )
-
-        config_dict = asdict(config)
-        neptune_logger.log_hyperparams({**config_dict})
-    else:
-        neptune_logger = False
-
-    callbacks_list: list = [checkpoint_callback]
-
-    if quiet_mode:
-        callbacks_list.append(CustomCallback())
-
-    if config.early_stopping:
-        callbacks_list.append(early_stopping)
-
-    # Configure trainer and begin training
-    trainer = pylightning.Trainer(
-        accumulate_grad_batches=config.accumulate_grad_batches,
-        gradient_clip_val=config.gradient_clip_val,
-        max_epochs=config.max_epochs,
-        accelerator="auto",
-        devices=1,
-        precision=config.precision,
-        val_check_interval=config.val_check_interval,
-        enable_checkpointing=config.enable_checkpointing,
-        logger=neptune_logger if enable_logging else False,
-        enable_progress_bar=not quiet_mode,
-        callbacks=callbacks_list,
-    )
-
-    # Begin training the model
-    trainer.fit(saint_model, train_dataloaders=train_dataloader, val_dataloaders=validation_dataloader)
 
     # Perform evaluations after model training
     if perform_eval:
-        # Load the best checkpoint for evaluation
-        best_model_path = checkpoint_callback.best_model_path
+        print("--- Final Evaluation on Test Set ---")
 
-        print(f"Loading best model from: {best_model_path} for evaluation")
-        saint_eval_model = SAINTTransformer.load_from_checkpoint(best_model_path)
-
-        # Run evaluations on trained model
-        trainer.test(saint_eval_model, eval_dataloader)
+        test_avg_loss, test_accuracy, test_auroc = validate_model(saint_model, eval_dataloader, config.device)
+        print(f"Evaluation | Accuracy: {test_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}, ROC: {test_auroc:.4f}\n")
 
     # If it reaches this point, thank fuckin god
-    print("✅ FT-Transformer structure works!")
-
+    print("🪿 --- Training finished --- 🪿")
     return

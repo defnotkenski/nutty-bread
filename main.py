@@ -1,5 +1,4 @@
 from custom.models.saint_transformer.train import train_model
-from custom.models.tab_pfn.train import train_model as train_pfn
 from pathlib import Path
 import modal
 import torch
@@ -41,9 +40,7 @@ def run_with_modal() -> None:
     print(f"CUDA status: {has_cuda}")
 
     modal.interact()
-
-    # train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True, quiet_mode=False, enable_logging=True)
-    train_pfn()
+    train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True)
 
     return
 
@@ -55,4 +52,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True, quiet_mode=False, enable_logging=False)
+    train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True)
