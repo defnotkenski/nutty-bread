@@ -1,0 +1,95 @@
+# Git and version control
+.git/
+.gitignore
+
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments (won't need in container)
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Development tools and IDEs
+.idea/
+.vscode/
+*.iws
+*.iml
+*.ipr
+.spyderproject
+.spyproject
+.ropeproject
+
+# Testing and coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.hypothesis/
+
+# Documentation (usually not needed in container)
+README.md
+docs/
+*.md
+
+# ML/Data files (usually mount as volumes instead)
+*.h5
+*.pkl
+*.pth
+*.pt
+*.safetensors
+checkpoints/
+logs/
+tensorboard_logs/
+wandb/
+mlruns/
+.mlflow/
+
+# Large data files (mount as volumes)
+data/
+datasets/deprecated/
+raw_data/
+processed_data/
+*.csv
+*.parquet
+
+# OS files
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+*~
+
+# Docker files themselves
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# CLAUDE development files
+.claude/
+CLAUDE.md
