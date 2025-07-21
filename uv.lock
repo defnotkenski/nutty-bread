@@ -874,26 +874,6 @@ wheels = [
 ]
 
 [[package]]
-name = "lightning"
-version = "2.5.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "fsspec", extra = ["http"] },
-    { name = "lightning-utilities" },
-    { name = "packaging" },
-    { name = "pytorch-lightning" },
-    { name = "pyyaml" },
-    { name = "torch" },
-    { name = "torchmetrics" },
-    { name = "tqdm" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/42/3c/6a930ac7c64fb896adbe560a9141570732d9ca890a11e6d158edd5aece76/lightning-2.5.2.tar.gz", hash = "sha256:9550df613cfb22358ebf77b4a8ad45f3767cd7d26ba2d52b7f036bd3cdd701c4", size = 633391, upload-time = "2025-06-20T15:58:22.065Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/71/a9/5d39280e55dc5df9e98be074029f6b48f86fe3db4929cb9ada6401234b47/lightning-2.5.2-py3-none-any.whl", hash = "sha256:7e7f23245e214c8ec14d5d8119d3856c25cfe96f9856296fd5df4e29c2ff88a7", size = 821145, upload-time = "2025-06-20T15:58:18.609Z" },
-]
-
-[[package]]
 name = "lightning-utilities"
 version = "0.14.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1210,7 +1190,6 @@ name = "neural-learning"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "lightning" },
     { name = "neptune" },
     { name = "polars" },
     { name = "prodigy-plus-schedule-free" },
@@ -1231,7 +1210,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "lightning", specifier = ">=2.5.2" },
     { name = "neptune", specifier = ">=1.14.0" },
     { name = "polars", specifier = ">=1.31.0" },
     { name = "prodigy-plus-schedule-free", specifier = "==2.0.0rc2" },
