@@ -1,0 +1,18 @@
+FROM nvidia/cuda:12.8.1-devel-ubuntu22.04
+LABEL authors="kennylao"
+
+RUN apt-get update
+RUN apt-get install -y curl
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+RUN uv python install 3.12
+
+WORKDIR /workspace
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync
+
+COPY . .
+
+ENTRYPOINT ["top", "-b"]
