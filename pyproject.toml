@@ -27,11 +27,6 @@ pytorch-tabular = { git = "https://github.com/manujosephv/pytorch_tabular.git", 
 prodigy-plus-schedule-free = { git = "https://github.com/LoganBooker/prodigy-plus-schedule-free.git", rev = "main" }
 
 [[tool.uv.index]]
-name = "pytorch-nightly-cu128"
-url = "https://download.pytorch.org/whl/nightly/cu128"
-explicit = true
-
-[[tool.uv.index]]
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true

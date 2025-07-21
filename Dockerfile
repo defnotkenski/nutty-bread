@@ -10,6 +10,5 @@ ENV PATH="/root/.local/bin:$PATH"
 WORKDIR /workspace
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync
 
 COPY . .
