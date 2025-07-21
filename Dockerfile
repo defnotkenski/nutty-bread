@@ -15,4 +15,4 @@ RUN uv sync
 
 COPY . .
 
-ENTRYPOINT ["top", "-b"]
+#ENTRYPOINT ["top", "-b"]
