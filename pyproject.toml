@@ -12,14 +12,14 @@ dependencies = [
     "pyarrow",
     "requests",
     "prodigy-plus-schedule-free",
-    "pytorch-triton"
+    "triton; sys_platform == 'linux'"
 ]
 
 [tool.uv.sources]
 torch = [
     {index = "pytorch-cu128", marker = "sys_platform == 'linux'"},
 ]
-pytorch-triton = [
+triton = [
     {index = "pytorch-cu128", marker = "sys_platform == 'linux'"},
 ]
 tabpfn = { git = "https://github.com/PriorLabs/TabPFN.git", rev = "main" }
