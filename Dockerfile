@@ -9,6 +9,8 @@ ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /workspace
 
+RUN uv python install 3.12
+
 COPY pyproject.toml uv.lock ./
 
 COPY . .

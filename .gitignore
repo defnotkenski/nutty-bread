@@ -194,6 +194,7 @@ mlruns/
 
 # Data files
 *.csv
+!datasets/sample_horses_v2.csv
 *.tsv
 *.json
 *.jsonl
@@ -201,7 +202,7 @@ mlruns/
 *.feather
 *.hdf5
 data/
-datasets/deprecated/
+datasets/deprecated
 raw_data/
 processed_data/
 test_data/
