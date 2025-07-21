@@ -9,6 +9,7 @@ from custom.models.saint_transformer.config import SAINTConfig
 from custom.models.saint_transformer.data_processing import collate_races
 from sklearn.metrics import roc_auc_score, accuracy_score
 from tqdm import tqdm
+from prodigyplus import ProdigyPlusScheduleFree
 
 
 def prepare_data(path_to_csv: Path, config: SAINTConfig):
@@ -99,8 +100,9 @@ def validate_model(model: SAINTTransformer, dataloader: DataLoader, device: torc
 
 
 def train_model(path_to_csv: Path, perform_eval: bool) -> None:
-    print("Starting model training...")
+    print("\n--- Starting model training ---")
     print(f"CUDA Availability: {torch.cuda.is_available()}")
+    print("------\n")
 
     config = SAINTConfig()
     config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -131,8 +133,17 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
     saint_model.to(device)
 
     # --- Create the optimizer ---
-    optimizer = torch.optim.AdamW(saint_model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
+    # optimizer = torch.optim.AdamW(saint_model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.max_epochs)
+
+    optimizer = ProdigyPlusScheduleFree(
+        saint_model.parameters(),
+        lr=config.learning_rate,
+        weight_decay=config.weight_decay,
+        use_speed=config.prodigy_use_speed,
+        use_orthograd=config.prodigy_use_orthograd,
+        use_focus=config.prodigy_use_focus,
+    )
 
     # --- Finetuning and Evaluation Loop ---
     print("--- Starting Finetuning & Evaluation ---")
