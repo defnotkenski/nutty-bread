@@ -12,12 +12,15 @@ dependencies = [
     "pyarrow",
     "requests",
     "prodigy-plus-schedule-free",
-    "pytorch-triton; sys_platform == 'linux' and platform_machine == 'aarch_64'"
+    "pytorch-triton"
 ]
 
 [tool.uv.sources]
-torch = [{index = "pytorch-nightly-cu128", marker = "sys_platform == 'linux' and platform_machine == 'aarch_64'"}]
-pytorch-triton = [{index = "pytorch-nightly-cu128", marker = "sys_platform == 'linux' and platform_machine == 'aarch_64'"}]
+torch = [
+    {index = "pytorch-nightly-cu128", marker = "sys_platform == 'linux' and platform_machine == 'arm64'"},
+    {index = "pytorch-cu128", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'"}
+]
+pytorch-triton = [{index = "pytorch-nightly-cu128", marker = "sys_platform == 'linux' and platform_machine == 'arm64'"}]
 tabpfn = { git = "https://github.com/PriorLabs/TabPFN.git", rev = "main" }
 pytorch-tabular = { git = "https://github.com/manujosephv/pytorch_tabular.git", rev = "main" }
 prodigy-plus-schedule-free = { git = "https://github.com/LoganBooker/prodigy-plus-schedule-free.git", rev = "main" }
@@ -25,6 +28,11 @@ prodigy-plus-schedule-free = { git = "https://github.com/LoganBooker/prodigy-plu
 [[tool.uv.index]]
 name = "pytorch-nightly-cu128"
 url = "https://download.pytorch.org/whl/nightly/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [dependency-groups]
