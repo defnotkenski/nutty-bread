@@ -1147,6 +1147,8 @@ dependencies = [
     { name = "prodigy-plus-schedule-free", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pyarrow", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pytorch-tabular", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "pytorch-triton", version = "0.0.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+    { name = "pytorch-triton", version = "3.3.0", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform == 'linux'" },
     { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "tabpfn", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "torch", version = "2.7.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
@@ -1166,6 +1168,8 @@ requires-dist = [
     { name = "prodigy-plus-schedule-free", git = "https://github.com/LoganBooker/prodigy-plus-schedule-free.git?rev=main" },
     { name = "pyarrow" },
     { name = "pytorch-tabular", git = "https://github.com/manujosephv/pytorch_tabular.git?rev=main" },
+    { name = "pytorch-triton", marker = "sys_platform != 'linux'" },
+    { name = "pytorch-triton", marker = "sys_platform == 'linux'", index = "https://download.pytorch.org/whl/cu128" },
     { name = "requests" },
     { name = "tabpfn", git = "https://github.com/PriorLabs/TabPFN.git?rev=main" },
     { name = "torch", marker = "sys_platform != 'linux'" },
@@ -1718,6 +1722,40 @@ dependencies = [
     { name = "torch", version = "2.7.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.7.1+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform == 'linux'" },
     { name = "torchmetrics", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+
+[[package]]
+name = "pytorch-triton"
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "sys_platform == 'darwin'",
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5f/94/f7a38f4323a89249f7e426850fb1cd51c19b0ebaf9c23f4a375b9a541870/pytorch_triton-0.0.1-py3-none-any.whl", hash = "sha256:f3f1052e3e4ac2937bfbbb5bc3b73854319c43d2a597594465e62f514e7be890", size = 1462, upload-time = "2022-12-30T21:35:55.507Z" },
+]
+
+[[package]]
+name = "pytorch-triton"
+version = "3.3.0"
+source = { registry = "https://download.pytorch.org/whl/cu128" }
+resolution-markers = [
+    "platform_machine == 'aarch_64' and sys_platform == 'linux'",
+    "platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "platform_machine == 'arm64' and sys_platform == 'linux'",
+    "platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "platform_machine != 'aarch64' and platform_machine != 'aarch_64' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'linux'",
+]
+dependencies = [
+    { name = "setuptools", marker = "sys_platform == 'linux'" },
+]
+wheels = [
+    { url = "https://download.pytorch.org/whl/pytorch_triton-3.3.0-cp312-cp312-linux_aarch64.whl", hash = "sha256:34c496be6e5a89fa707cb69e9a3a638227f51487cf44204ff37302c538f3209b" },
+    { url = "https://download.pytorch.org/whl/pytorch_triton-3.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3fe63e05bafba2d91ad875f118290f5f965f2dc57384d4a8f62f4d736816e141" },
+    { url = "https://download.pytorch.org/whl/pytorch_triton-3.3.0-cp313-cp313-linux_aarch64.whl", hash = "sha256:a8d37a5fbdd86be9f78536c10890bd18ce6563025eec526edcd0e5d4b8e8dd54" },
+    { url = "https://download.pytorch.org/whl/pytorch_triton-3.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:fe1264bd72107fab90c23b6b0000f2004b8e41cf92d388463051afd45b1126b5" },
+    { url = "https://download.pytorch.org/whl/pytorch_triton-3.3.0-cp313-cp313t-linux_aarch64.whl", hash = "sha256:5196bb15541a489f1a69fc124efeb1a132c16c319a80fbb30abaa2198fd4d0ef" },
+    { url = "https://download.pytorch.org/whl/pytorch_triton-3.3.0-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:bfa6be0e08bf53708081c365d8ef4732b5586b68a774ebb9f4ede52c3d128084" },
 ]
 
 [[package]]
