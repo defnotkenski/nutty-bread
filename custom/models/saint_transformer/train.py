@@ -99,7 +99,8 @@ def validate_model(model: SAINTTransformer, dataloader: DataLoader, device: torc
 
 
 def train_model(path_to_csv: Path, perform_eval: bool) -> None:
-    print("Testing SAINT-Heavy transformer infrastructure...")
+    print("Starting model training...")
+    print(f"CUDA Availability: {torch.cuda.is_available()}")
 
     config = SAINTConfig()
     config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
