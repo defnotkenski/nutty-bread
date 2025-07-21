@@ -23,9 +23,9 @@ class SAINTConfig:
     accumulate_grad_batches: int = 1
     gradient_clip_val: Optional[float] = None
     max_epochs: int = 30
-    val_check_interval: float | None = None  # Default: None
-    enable_checkpointing: bool | None = True  # Default: None
-    precision: str | None = None  # Default: None
+    val_check_interval: float | None = None
+    enable_checkpointing: bool | None = True
+    precision: str | None = None
     early_stopping: bool = False
 
     # Attention hyperparams
