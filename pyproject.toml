@@ -12,12 +12,12 @@ dependencies = [
     "pyarrow",
     "requests",
     "prodigy-plus-schedule-free",
-    "pytorch-triton; sys_platform == 'linux'"
+    "pytorch-triton; sys_platform == 'linux' and platform_machine == 'aarch_64'"
 ]
 
 [tool.uv.sources]
-torch = [{index = "pytorch-nightly-cu128", marker = "sys_platform == 'linux'"}]
-pytorch-triton = [{index = "pytorch-nightly-cu128", marker = "sys_platform == 'linux'"}]
+torch = [{index = "pytorch-nightly-cu128", marker = "sys_platform == 'linux' and platform_machine == 'aarch_64'"}]
+pytorch-triton = [{index = "pytorch-nightly-cu128", marker = "sys_platform == 'linux' and platform_machine == 'aarch_64'"}]
 tabpfn = { git = "https://github.com/PriorLabs/TabPFN.git", rev = "main" }
 pytorch-tabular = { git = "https://github.com/manujosephv/pytorch_tabular.git", rev = "main" }
 prodigy-plus-schedule-free = { git = "https://github.com/LoganBooker/prodigy-plus-schedule-free.git", rev = "main" }
