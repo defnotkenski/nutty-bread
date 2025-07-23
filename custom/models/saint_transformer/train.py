@@ -1,6 +1,7 @@
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
+from custom.models.saint_transformer.VMapEnsembleTrainer import VMapEnsembleTrainer
 from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset
 from custom.models.saint_transformer.saint_transformer import SAINTTransformer
 from pathlib import Path
@@ -10,6 +11,16 @@ from custom.models.saint_transformer.data_processing import collate_races
 from sklearn.metrics import roc_auc_score, accuracy_score
 from tqdm import tqdm
 from prodigyplus import ProdigyPlusScheduleFree
+
+
+def calc_pos_weight(preprocessed):
+    # Calculate pos_weight for weighted BCE loss fn
+    target_series = pd.Series(preprocessed.target_tensor.numpy().flatten())
+    pos_count = target_series.sum()
+    neg_count = len(target_series) - pos_count
+    pos_weight = neg_count / pos_count
+
+    return pos_weight
 
 
 def prepare_data(path_to_csv: Path, config: SAINTConfig):
@@ -110,10 +121,7 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
     train_dataloader, val_dataloader, eval_dataloader, preprocessed = prepare_data(path_to_csv, config)
 
     # Calculate pos_weight for weighted BCE loss fn
-    target_series = pd.Series(preprocessed.target_tensor.numpy().flatten())
-    pos_count = target_series.sum()
-    neg_count = len(target_series) - pos_count
-    pos_weight = neg_count / pos_count
+    pos_weight = calc_pos_weight(preprocessed)
 
     # Create model
     saint_model = SAINTTransformer(
@@ -191,3 +199,47 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
     # If it reaches this point, thank fuckin god
     print("🪿 --- Training finished --- 🪿")
     return
+
+
+def train_vmap_ensemble(path_to_csv: Path, num_models: int = 5):
+    config = SAINTConfig()
+
+    train_dataloader, val_dataloader, eval_dataloader, preprocessed = prepare_data(path_to_csv, config)
+
+    # Model factory function
+    def create_saint_model():
+        pos_weight = calc_pos_weight(preprocessed)
+        return SAINTTransformer(
+            continuous_dims=preprocessed.continuous_tensor.shape[1],
+            categorical_dims=preprocessed.categorical_cardinalities,
+            learning_rate=config.learning_rate,
+            num_block_layers=config.num_block_layers,
+            d_model=config.d_model,
+            num_heads=config.num_attention_heads,
+            output_size=config.output_size,
+            pos_weight=pos_weight,
+            config=config,
+        )
+
+    ensemble = VMapEnsembleTrainer(
+        model_factory=create_saint_model, num_models=num_models, seeds=[777 + i * 42 for i in range(num_models)]
+    )
+
+    optimizers = ensemble.create_optimizers(config)
+
+    for epoch in range(config.max_epochs + 1):
+        if epoch > 0:
+            ensemble_loss = 0
+            for batch in tqdm(train_dataloader, desc=f"Ensem. Epoch: {epoch}"):
+                x, y, attention_mask = batch
+                x = {k: v.to(ensemble.device) for k, v in x.items()}
+                y, attention_mask = y.to(ensemble.device), attention_mask.to(ensemble.device)
+
+                batch_loss = ensemble.train_step((x, y, attention_mask), optimizers)
+                ensemble_loss += batch_loss
+
+            print(f"Epoch {epoch} - Average Loss: {ensemble_loss/len(train_dataloader):.4f}")
+
+    final_model = ensemble.create_final_model(create_saint_model)
+
+    return final_model

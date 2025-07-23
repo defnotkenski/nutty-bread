@@ -1,4 +1,4 @@
-from custom.models.saint_transformer.train import train_model
+from custom.models.saint_transformer.train import train_model, train_vmap_ensemble
 from pathlib import Path
 import modal
 import torch
@@ -52,4 +52,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True)
+    # --- Train model without ensembling ---
+    # train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True)
+
+    # --- Train model with ensembling (different seeds) ---
+    train_vmap_ensemble(path_to_csv=GROUNDED_RAW_DATASET_PATH, num_models=2)
