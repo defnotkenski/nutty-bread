@@ -28,8 +28,15 @@ class VMapEnsembleTrainer:
         x, y, attention_mask = batch
 
         def single_model_setup(params, buffers):
-            model_output = functional_call(self.base_model, (params, buffers), (x, y, attention_mask, True))
-            return model_output
+            logits = functional_call(self.base_model, (params, buffers), (x, attention_mask))
+            y_masked = y[attention_mask]
+            logits_masked = logits[attention_mask]
+
+            loss = torch.nn.functional.binary_cross_entropy_with_logits(logits_masked, y_masked)
+
+            probs = torch.sigmoid(logits_masked)
+
+            return loss, probs, y_masked
 
         # Vectorize across model dimension (0)
         return vmap(single_model_setup, in_dims=(0, 0))(self.params, self.buffers)
