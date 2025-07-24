@@ -141,7 +141,9 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
     saint_model.to(device)
 
     # --- Create the optimizer ---
-    # optimizer = torch.optim.AdamW(saint_model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
+    # optimizer = torch.optim.AdamW(
+    #     saint_model.parameters(), lr=config.learning_rate, betas=config.betas, weight_decay=config.weight_decay
+    # )
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.max_epochs)
 
     optimizer = ProdigyPlusScheduleFree(

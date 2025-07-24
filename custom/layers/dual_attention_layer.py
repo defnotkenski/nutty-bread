@@ -3,6 +3,7 @@ import torch
 from custom.blocks.attention_blocks import IntraRowAttention, InterRowAttention
 from custom.blocks.lwta_blocks import LWTA
 from custom.models.saint_transformer.config import SAINTConfig
+from custom.blocks.activation_blocks import SwiGLU
 
 
 class DualAttentionLayer(nn.Module):
@@ -17,16 +18,20 @@ class DualAttentionLayer(nn.Module):
         self.intra_attention = IntraRowAttention(d_model=d_model, num_heads=num_heads // 2, dropout=config.dropout)
         self.inter_attention = InterRowAttention(d_model=d_model, num_heads=num_heads // 2, dropout=config.dropout)
 
-        self.layer_norm_1 = nn.LayerNorm(d_model)
-        self.layer_norm_2 = nn.LayerNorm(d_model)
+        # self.layer_norm_1 = nn.LayerNorm(d_model)
+        # self.layer_norm_2 = nn.LayerNorm(d_model)
+
+        self.layer_norm_1 = nn.RMSNorm(d_model)  # Experimenting with Transformer++
+        self.layer_norm_2 = nn.RMSNorm(d_model)  # Experimenting with Transformer++
 
         self.lwta = LWTA(d_model * 4, num_competitors=num_competitors, temp=1.0)
 
         self.feed_forward = nn.Sequential(
-            nn.Linear(d_model, d_model * 4),
+            nn.Linear(d_model, d_model * 8, bias=False),  # Change to d_model * 4 if not using SwiGLU based activations
             # nn.GELU(),
-            self.lwta,
-            nn.Linear(d_model * 4, d_model),
+            SwiGLU(),  # Experimenting with Transformer++
+            # self.lwta,
+            nn.Linear(d_model * 4, d_model, bias=False),
         )
 
         self.dropout = nn.Dropout(config.dropout)

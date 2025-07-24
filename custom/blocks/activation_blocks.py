@@ -25,3 +25,13 @@ class StableMax(nn.Module):
         s_sum = s_logits.sum(dim=self.dim, keepdim=True)
 
         return s_logits / (s_sum + 1e-9)
+
+
+class SwiGLU(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.silu = nn.SiLU()
+
+    def forward(self, x):
+        gate, up = x.chunk(2, dim=-1)
+        return gate * self.silu(up)
