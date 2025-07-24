@@ -1,6 +1,5 @@
 import torch
 from torch.func import vmap, stack_module_state, functional_call
-from prodigyplus import ProdigyPlusScheduleFree
 from custom.models.saint_transformer.config import SAINTConfig
 
 
@@ -49,15 +48,13 @@ class VMapEnsembleTrainer:
     def create_optimizers(self, config: SAINTConfig):
         optimizers = []
         for i in range(self.num_models):
-            model_params = [p for p in self.params.values()]
-            optimizer = ProdigyPlusScheduleFree(
-                [model_params[j][i] for j in range(len(model_params))],
+            optimizer = torch.optim.AdamW(
+                self.models[i].parameters(),
                 lr=config.learning_rate,
+                betas=config.betas,
                 weight_decay=config.weight_decay,
-                use_speed=config.prodigy_use_speed,
-                use_orthograd=config.prodigy_use_orthograd,
-                use_focus=config.prodigy_use_focus,
             )
+
             optimizers.append(optimizer)
 
         return optimizers

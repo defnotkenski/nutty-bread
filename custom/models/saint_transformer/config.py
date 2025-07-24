@@ -39,5 +39,5 @@ class SAINTConfig:
     prodigy_use_speed: bool = True
     prodigy_use_orthograd: bool = False
     prodigy_use_focus: bool = False
-    weight_decay: float = 0.1
+    weight_decay: float = 0.1  # Set to 0.0 if using Prodigy Speed otherwise 0.1 is good
     betas: tuple[float, float] = (0.9, 0.95)
