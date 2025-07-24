@@ -5,7 +5,7 @@ from typing import Optional
 @dataclass
 class SAINTConfig:
     # Notes
-    notes: str = "Running experimental: Attention pooling. Stochastic competition attention."
+    notes: str = ""
 
     # Model hyperparams
     learning_rate: float = 1.0  # 1e-5
