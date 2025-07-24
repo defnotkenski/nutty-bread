@@ -1,7 +1,6 @@
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-from custom.models.saint_transformer.VMapEnsembleTrainer import VMapEnsembleTrainer
 from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset
 from custom.models.saint_transformer.saint_transformer import SAINTTransformer
 from pathlib import Path
@@ -141,19 +140,19 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
     saint_model.to(device)
 
     # --- Create the optimizer ---
-    # optimizer = torch.optim.AdamW(
-    #     saint_model.parameters(), lr=config.learning_rate, betas=config.betas, weight_decay=config.weight_decay
-    # )
+    optimizer = torch.optim.AdamW(
+        saint_model.parameters(), lr=config.learning_rate, betas=config.betas, weight_decay=config.weight_decay
+    )
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.max_epochs)
 
-    optimizer = ProdigyPlusScheduleFree(
-        saint_model.parameters(),
-        lr=config.learning_rate,
-        weight_decay=config.weight_decay,
-        use_speed=config.prodigy_use_speed,
-        use_orthograd=config.prodigy_use_orthograd,
-        use_focus=config.prodigy_use_focus,
-    )
+    # optimizer = ProdigyPlusScheduleFree(
+    #     saint_model.parameters(),
+    #     lr=config.learning_rate,
+    #     weight_decay=config.weight_decay,
+    #     use_speed=config.prodigy_use_speed,
+    #     use_orthograd=config.prodigy_use_orthograd,
+    #     use_focus=config.prodigy_use_focus,
+    # )
 
     # --- Finetuning and Evaluation Loop ---
     print("--- Starting Finetuning & Evaluation ---")
@@ -201,47 +200,3 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
     # If it reaches this point, thank fuckin god
     print("🪿 --- Training finished --- 🪿")
     return
-
-
-def train_vmap_ensemble(path_to_csv: Path, num_models: int = 5):
-    config = SAINTConfig()
-
-    train_dataloader, val_dataloader, eval_dataloader, preprocessed = prepare_data(path_to_csv, config)
-
-    # Model factory function
-    def create_saint_model():
-        pos_weight = calc_pos_weight(preprocessed)
-        return SAINTTransformer(
-            continuous_dims=preprocessed.continuous_tensor.shape[1],
-            categorical_dims=preprocessed.categorical_cardinalities,
-            learning_rate=config.learning_rate,
-            num_block_layers=config.num_block_layers,
-            d_model=config.d_model,
-            num_heads=config.num_attention_heads,
-            output_size=config.output_size,
-            pos_weight=pos_weight,
-            config=config,
-        )
-
-    ensemble = VMapEnsembleTrainer(
-        model_factory=create_saint_model, num_models=num_models, seeds=[777 + i * 42 for i in range(num_models)]
-    )
-
-    optimizers = ensemble.create_optimizers(config)
-
-    for epoch in range(config.max_epochs + 1):
-        if epoch > 0:
-            ensemble_loss = 0
-            for batch in tqdm(train_dataloader, desc=f"Ensem. Epoch: {epoch}"):
-                x, y, attention_mask = batch
-                x = {k: v.to(ensemble.device) for k, v in x.items()}
-                y, attention_mask = y.to(ensemble.device), attention_mask.to(ensemble.device)
-
-                batch_loss = ensemble.train_step((x, y, attention_mask), optimizers)
-                ensemble_loss += batch_loss
-
-            print(f"Epoch {epoch} - Average Loss: {ensemble_loss/len(train_dataloader):.4f}")
-
-    final_model = ensemble.create_final_model(create_saint_model)
-
-    return final_model
