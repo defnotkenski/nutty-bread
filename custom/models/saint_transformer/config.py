@@ -5,7 +5,7 @@ from typing import Optional
 @dataclass
 class SAINTConfig:
     # Notes
-    notes: str = ""
+    notes: str = "This is the original."
 
     # Model hyperparams
     learning_rate: float = 1e-5  # Set to 1.0 for Prodify otherwise 1e-5 is a good start
