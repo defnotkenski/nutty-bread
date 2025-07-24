@@ -6,10 +6,6 @@ from typing import Optional
 class SAINTConfig:
     # Notes
     notes: str = "This is the original."
-    notes2: str = "This is the amendment."
-    notes3: str = "This is the amendment to the amendment."
-    # notes4: str = "This is the amendment to the amendment to the amendment."
-    # notes5: str = "Just adding to the commit."
 
     # Model hyperparams
     learning_rate: float = 1e-5  # Set to 1.0 for Prodify otherwise 1e-5 is a good start
