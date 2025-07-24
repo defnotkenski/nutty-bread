@@ -8,7 +8,7 @@ class SAINTConfig:
     notes: str = ""
 
     # Model hyperparams
-    learning_rate: float = 1.0  # 1e-5
+    learning_rate: float = 1e-5  # Set to 1.0 for Prodify otherwise 1e-5 is a good start
     d_model: int = 64
     num_block_layers: int = 4
     num_attention_heads: int = 8
