@@ -9,13 +9,15 @@ class LWTA(nn.Module):
         super().__init__()
         self.num_competitors = num_competitors
         self.temp = temp
-        self.competitors = nn.ModuleList([nn.Linear(in_features, in_features) for _ in range(num_competitors)])
+        self.competitors = nn.ModuleList(
+            [nn.Sequential(nn.Linear(in_features, in_features), nn.GELU()) for _ in range(num_competitors)]
+        )
 
     def forward(self, x: Tensor):
         # x: (..., in_features) e.g., (batch, seq, d_model)
         activations = torch.stack([comp(x) for comp in self.competitors], dim=-1)  # (..., d_model, num_competitors)
 
-        logits = activations.mean(dim=-2)  # (..., num_competitors) – average over d_model for competition scores
+        logits = activations.norm(dim=-2)  # (..., num_competitors)
 
         if self.training:
             gates = fnn.gumbel_softmax(logits, tau=self.temp, hard=False, dim=-1)  # (..., num_competitors)
