@@ -5,7 +5,7 @@ from typing import Optional
 @dataclass
 class SAINTConfig:
     # Notes
-    notes: str = "This is the original."
+    notes: str = "This is the original.1"
     notes2: str = "This is the amendment."
     notes3: str = "This is the 3rd amendment."
 
