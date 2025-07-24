@@ -5,9 +5,9 @@ from typing import Optional
 @dataclass
 class SAINTConfig:
     # Notes
-    notes: str = "This is the original.1"
-    notes2: str = "This is the amendment.2"
-    notes3: str = "This is the 3rd amendment.3"
+    notes: str = "This is the original."
+    notes2: str = "This is the amendment."
+    notes3: str = "This is the 3rd amendment."
 
     # Model hyperparams
     learning_rate: float = 1e-5  # Set to 1.0 for Prodify otherwise 1e-5 is a good start.
