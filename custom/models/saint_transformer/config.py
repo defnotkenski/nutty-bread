@@ -7,7 +7,7 @@ class SAINTConfig:
     # Notes
     notes: str = "This is the original."
     notes2: str = "This is the 2nd amendment."
-    notes3: str = "This is the 3rd amendment.1"
+    notes3: str = "This is the 3rd amendment."
 
     # Model hyperparams
     learning_rate: float = 1e-5  # Set to 1.0 for Prodify otherwise 1e-5 is a good start.
