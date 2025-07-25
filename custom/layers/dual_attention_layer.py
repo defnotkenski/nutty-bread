@@ -28,9 +28,8 @@ class DualAttentionLayer(nn.Module):
 
         self.feed_forward = nn.Sequential(
             nn.Linear(d_model, d_model * 8, bias=False),  # Change to d_model * 4 if not using SwiGLU based activations
-            # nn.GELU(),
             SwiGLU(),  # Experimenting with Transformer++
-            # self.lwta,
+            self.lwta,
             nn.Linear(d_model * 4, d_model, bias=False),
         )
 
