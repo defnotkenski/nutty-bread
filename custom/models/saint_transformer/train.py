@@ -10,6 +10,16 @@ from custom.models.saint_transformer.data_processing import collate_races
 from sklearn.metrics import roc_auc_score, accuracy_score
 from tqdm import tqdm
 from prodigyplus import ProdigyPlusScheduleFree
+import neptune
+
+
+def configure_logger(config: SAINTConfig) -> neptune.Run:
+    run = neptune.init_run(
+        project="toastbutter/diabeticdonkey",
+        api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4OTY0NjY1My00ZmViLTQxYzctOWIzNi1mNDJlNDdiNDk2NjIifQ==",
+    )
+    run["config"] = config.__dict__
+    return run
 
 
 def calc_pos_weight(preprocessed):
@@ -140,22 +150,28 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
     saint_model.to(device)
 
     # --- Create the optimizer ---
-    optimizer = torch.optim.AdamW(
-        saint_model.parameters(), lr=config.learning_rate, betas=config.betas, weight_decay=config.weight_decay
-    )
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.max_epochs)
-
-    # optimizer = ProdigyPlusScheduleFree(
-    #     saint_model.parameters(),
-    #     lr=config.learning_rate,
-    #     weight_decay=config.weight_decay,
-    #     use_speed=config.prodigy_use_speed,
-    #     use_orthograd=config.prodigy_use_orthograd,
-    #     use_focus=config.prodigy_use_focus,
-    # )
+    optimizer = None
+    if config.optimizer == "adamw":
+        optimizer = torch.optim.AdamW(
+            saint_model.parameters(), lr=config.learning_rate, betas=config.betas, weight_decay=config.weight_decay
+        )
+        _scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.max_epochs)
+    elif config.optimizer == "prodigy-plus":
+        optimizer = ProdigyPlusScheduleFree(
+            saint_model.parameters(),
+            lr=config.learning_rate,
+            weight_decay=config.weight_decay,
+            use_speed=config.prodigy_use_speed,
+            use_orthograd=config.prodigy_use_orthograd,
+            use_focus=config.prodigy_use_focus,
+        )
 
     # --- Finetuning and Evaluation Loop ---
     print("--- Starting Finetuning & Evaluation ---")
+
+    run = None
+    if config.enable_logging:
+        run = configure_logger(config)
 
     for epoch in range(config.max_epochs + 1):
         if epoch > 0:
@@ -172,9 +188,12 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
                 # Forward pass
                 optimizer.zero_grad()
                 loss, probs, y_masked = saint_model.compute_step((x, y, attention_mask), True)
-                loss.backward()
 
-                # Step forward with optimizer or scheduler
+                # Log to Neptune
+                run["train/loss"].append(loss.item()) if run else None
+
+                # Backward pass and step forward with optimizer or scheduler
+                loss.backward()
                 optimizer.step()
 
                 p_bar.set_postfix(loss=f"{loss.item():.4f}")
@@ -182,15 +201,22 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
             # Scheduler step after epoch
             # scheduler.step()
 
-        # --- Evaluation loop ---
+        # --- Validation loop ---
         epoch_avg_loss, epoch_accuracy, epoch_auroc = validate_model(saint_model, val_dataloader, config.device)
-        status = "Initial" if epoch == 0 else f"Epoch: {epoch}"
 
+        # --- Log validation metrics ---
+        run["val/loss"].append(epoch_avg_loss) if run else None
+        run["val/acc"].append(epoch_accuracy) if run else None
+        run["val/auroc"].append(epoch_auroc) if run else None
+
+        status = "Initial" if epoch == 0 else f"Epoch: {epoch}"
         print(
             f"{status} Validation | Accuracy: {epoch_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}, ROC: {epoch_auroc:.4f}\n"
         )
 
     # Perform evaluations after model training
+    run.stop() if run else None
+
     if perform_eval:
         print("--- Final Evaluation on Test Set ---")
 

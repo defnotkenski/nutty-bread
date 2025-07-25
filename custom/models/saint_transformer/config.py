@@ -1,13 +1,11 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Literal
 
 
 @dataclass
 class SAINTConfig:
     # Notes
     notes: str = "This is the original."
-    notes2: str = "This is the 2nd amendment."
-    notes3: str = "This is the 3rd amendment."
 
     # Model hyperparams
     learning_rate: float = 1e-5  # Set to 1.0 for Prodify otherwise 1e-5 is a good start.
@@ -17,6 +15,7 @@ class SAINTConfig:
     output_size: int = 1
     dropout: float = 0.3
     label_smoothing: bool = False
+    enable_logging: bool = True
 
     # Training hyperparams
     random_state: int = 777
@@ -38,6 +37,7 @@ class SAINTConfig:
     shuffle: bool = False
 
     # Optimizer hyperparams
+    optimizer: Literal["prodigy-plus", "adamw"] = "adamw"
     prodigy_use_speed: bool = True
     prodigy_use_orthograd: bool = False
     prodigy_use_focus: bool = False
