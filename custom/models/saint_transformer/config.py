@@ -15,7 +15,10 @@ class SAINTConfig:
     output_size: int = 1
     dropout: float = 0.3
     label_smoothing: bool = False
+
+    # Logging
     enable_logging: bool = True
+    log_every_n_steps: int = 50
 
     # Training hyperparams
     random_state: int = 777
@@ -24,7 +27,6 @@ class SAINTConfig:
     accumulate_grad_batches: int = 1
     gradient_clip_val: Optional[float] = None
     max_epochs: int = 30
-    val_check_interval: float | None = None
     enable_checkpointing: bool | None = True
     precision: str | None = None
     early_stopping: bool = False

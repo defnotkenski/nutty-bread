@@ -1,7 +1,5 @@
-import os
 import pandas as pd
 import torch
-from neptune.utils import stringify_unsupported
 from torch.utils.data import DataLoader
 from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset
 from custom.models.saint_transformer.saint_transformer import SAINTTransformer
@@ -12,16 +10,7 @@ from custom.models.saint_transformer.data_processing import collate_races
 from sklearn.metrics import roc_auc_score, accuracy_score
 from tqdm import tqdm
 from prodigyplus import ProdigyPlusScheduleFree
-import neptune
-
-
-def configure_logger(config: SAINTConfig) -> neptune.Run:
-    run = neptune.init_run(
-        project=os.getenv("NEPTUNE_PROJECT"),
-        api_token=os.getenv("NEPTUNE_API_TOKEN"),
-    )
-    run["config"] = stringify_unsupported(config.__dict__)
-    return run
+from custom.commons.logger import McLogger
 
 
 def calc_pos_weight(preprocessed):
@@ -191,55 +180,67 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
     print(f"Optimizer: \033[36m{optimizer.__class__.__name__}\033[0m")
     print(f"Scheduler: \033[36m{scheduler.__class__.__name__ if scheduler else None}\033[0m")
 
-    run = None
-    if config.enable_logging:
-        run = configure_logger(config)
+    mclogger = McLogger(config)
 
     for epoch in range(config.max_epochs + 1):
         if epoch > 0:
             p_bar = tqdm(train_dataloader, desc=f"Training Epoch {epoch}")
 
             saint_model.train()
+            mclogger.set_context("train")
+
             for batch in p_bar:
                 x, y, attention_mask = batch
 
-                # Move to device
+                # --- Move to device ---
                 x = {k: v.to(device) for k, v in x.items()}
                 y, attention_mask = y.to(device), attention_mask.to(device)
 
-                # Forward pass
+                # --- Forward pass ---
                 optimizer.zero_grad()
                 loss, probs, y_masked = saint_model.compute_step((x, y, attention_mask), True)
 
-                # Log to Neptune
-                run["train/loss"].append(loss.item()) if run else None
+                # --- Training metric to log ---
+                if mclogger.global_step % 50 == 0:
+                    train_acc = accuracy_score(y_masked.detach().cpu(), (probs > 0.5).detach().cpu())
+                    mclogger.log("accuracy", train_acc)
 
-                # Backward pass and step forward with optimizer or scheduler
+                mclogger.log("loss", loss.item())
+                mclogger.step()
+
+                # --- Backward pass and step forward with optimizer or scheduler ---
                 loss.backward()
                 optimizer.step()
 
                 p_bar.set_postfix(loss=f"{loss.item():.4f}")
 
-            # Scheduler step after epoch
+            # --- Scheduler step after epoch completion ---
             if scheduler:
                 scheduler.step()
-                run["train/lr"].log(scheduler.get_last_lr()[0], step=epoch) if run else None
+                mclogger.log("lr", scheduler.get_last_lr()[0])
 
         # --- Validation loop ---
         epoch_avg_loss, epoch_accuracy, epoch_auroc = validate_model(saint_model, val_dataloader, config.device)
 
         # --- Log validation metrics ---
-        run["val/loss"].log(epoch_avg_loss, step=epoch) if run else None
-        run["val/acc"].log(epoch_accuracy, step=epoch) if run else None
-        run["val/auroc"].log(epoch_auroc, step=epoch) if run else None
+        mclogger.set_context("val")
 
+        mclogger.log("loss", epoch_avg_loss)
+        mclogger.log("accuracy", epoch_accuracy)
+        mclogger.log("auroc", epoch_auroc)
+
+        # Also log the epoch
+        mclogger.set_context("meta")
+        mclogger.log("epoch", epoch)
+
+        # Log validation metrics to the console too
         status = "Initial" if epoch == 0 else f"Epoch: {epoch}"
         print(
             f"{status} Validation | Accuracy: {epoch_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}, ROC: {epoch_auroc:.4f}\n"
         )
 
-    # Perform evaluations after model training
-    run.stop() if run else None
+    # --- Perform evaluations after model training ---
+    mclogger.stop()
 
     if perform_eval:
         print("--- Final Evaluation on Test Set ---")
