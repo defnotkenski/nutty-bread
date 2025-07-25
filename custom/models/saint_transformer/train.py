@@ -1,7 +1,7 @@
 import os
-
 import pandas as pd
 import torch
+from neptune.utils import stringify_unsupported
 from torch.utils.data import DataLoader
 from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset
 from custom.models.saint_transformer.saint_transformer import SAINTTransformer
@@ -20,7 +20,7 @@ def configure_logger(config: SAINTConfig) -> neptune.Run:
         project=os.getenv("NEPTUNE_PROJECT"),
         api_token=os.getenv("NEPTUNE_API_TOKEN"),
     )
-    run["config"] = config.__dict__
+    run["config"] = stringify_unsupported(config.__dict__)
     return run
 
 
