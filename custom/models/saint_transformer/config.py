@@ -38,7 +38,7 @@ class SAINTConfig:
 
     # Optimizer hyperparams
     optimizer: Literal["prodigy-plus", "adamw"] = "adamw"
-    scheduler: Literal["cosine", "lambda"] | None = "cosine"
+    scheduler: Literal["cosine", "lambda"] | None = "lambda"
     prodigy_use_speed: bool = True
     prodigy_use_orthograd: bool = False
     prodigy_use_focus: bool = False
