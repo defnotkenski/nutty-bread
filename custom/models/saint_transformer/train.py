@@ -223,15 +223,15 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
             # Scheduler step after epoch
             if scheduler:
                 scheduler.step()
-                run["train/lr"].append(scheduler.get_last_lr()[0]) if run else None
+                run["train/lr"].log(scheduler.get_last_lr()[0], step=epoch) if run else None
 
         # --- Validation loop ---
         epoch_avg_loss, epoch_accuracy, epoch_auroc = validate_model(saint_model, val_dataloader, config.device)
 
         # --- Log validation metrics ---
-        run["val/loss"].append(epoch_avg_loss) if run else None
-        run["val/acc"].append(epoch_accuracy) if run else None
-        run["val/auroc"].append(epoch_auroc) if run else None
+        run["val/loss"].log(epoch_avg_loss, step=epoch) if run else None
+        run["val/acc"].log(epoch_accuracy, step=epoch) if run else None
+        run["val/auroc"].log(epoch_auroc, step=epoch) if run else None
 
         status = "Initial" if epoch == 0 else f"Epoch: {epoch}"
         print(
