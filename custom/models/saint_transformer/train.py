@@ -188,8 +188,8 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
 
     # --- Finetuning and Evaluation Loop ---
     print("--- Starting Finetuning & Evaluation ---")
-    print(f"Optimizer: {optimizer.__class__.__name__}")
-    print(f"Scheduler: {scheduler.__class__.__name__ if scheduler else None}")
+    print(f"Optimizer: \033[36m{optimizer.__class__.__name__}\033[0m")
+    print(f"Scheduler: \033[36m{scheduler.__class__.__name__ if scheduler else None}\033[0m")
 
     run = None
     if config.enable_logging:
