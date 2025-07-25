@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
@@ -15,8 +17,8 @@ import neptune
 
 def configure_logger(config: SAINTConfig) -> neptune.Run:
     run = neptune.init_run(
-        project="toastbutter/diabeticdonkey",
-        api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4OTY0NjY1My00ZmViLTQxYzctOWIzNi1mNDJlNDdiNDk2NjIifQ==",
+        project=os.getenv("NEPTUNE_PROJECT"),
+        api_token=os.getenv("NEPTUNE_API_TOKEN"),
     )
     run["config"] = config.__dict__
     return run
@@ -151,11 +153,28 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
 
     # --- Create the optimizer ---
     optimizer = None
+    scheduler = None
+
     if config.optimizer == "adamw":
         optimizer = torch.optim.AdamW(
             saint_model.parameters(), lr=config.learning_rate, betas=config.betas, weight_decay=config.weight_decay
         )
-        _scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.max_epochs)
+
+        if config.scheduler == "cosine":
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.max_epochs)
+        elif config.scheduler == "lambda":
+
+            def lr_lambda(step):
+                warmup_steps = config.max_epochs // 10  # 10% warmup
+                if step < warmup_steps:
+                    # Linear warmup
+                    return step / warmup_steps
+                else:
+                    # Polynomial decay
+                    progress = (step - warmup_steps) / (config.max_epochs - warmup_steps)
+                    return max(0.1, (1 - progress) ** 0.5)
+
+            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     elif config.optimizer == "prodigy-plus":
         optimizer = ProdigyPlusScheduleFree(
             saint_model.parameters(),
@@ -199,7 +218,9 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
                 p_bar.set_postfix(loss=f"{loss.item():.4f}")
 
             # Scheduler step after epoch
-            # scheduler.step()
+            if scheduler:
+                scheduler.step()
+                run["train/lr"].append(scheduler.get_last_lr()[0]) if run else None
 
         # --- Validation loop ---
         epoch_avg_loss, epoch_accuracy, epoch_auroc = validate_model(saint_model, val_dataloader, config.device)
@@ -219,7 +240,6 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
 
     if perform_eval:
         print("--- Final Evaluation on Test Set ---")
-
         test_avg_loss, test_accuracy, test_auroc = validate_model(saint_model, eval_dataloader, config.device)
         print(f"Evaluation | Accuracy: {test_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}, ROC: {test_auroc:.4f}\n")
 
