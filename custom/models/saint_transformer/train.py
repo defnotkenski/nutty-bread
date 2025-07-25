@@ -184,9 +184,12 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
             use_orthograd=config.prodigy_use_orthograd,
             use_focus=config.prodigy_use_focus,
         )
+        config.learning_rate = 1.0
 
     # --- Finetuning and Evaluation Loop ---
     print("--- Starting Finetuning & Evaluation ---")
+    print(f"Optimizer: {optimizer.__class__.__name__}")
+    print(f"Scheduler: {scheduler.__class__.__name__ if scheduler else None}")
 
     run = None
     if config.enable_logging:
