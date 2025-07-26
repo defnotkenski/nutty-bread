@@ -157,16 +157,20 @@ class SAINTTransformer(nn.Module):
             energy_grad = torch.autograd.grad(total_energy, predictions, create_graph=True)[0]
             energy_grad = energy_grad * attention_mask.float()
 
-            predictions = predictions - self.config.mcmc_step_size * energy_grad
+            with torch.no_grad():
+                predictions = predictions - self.config.mcmc_step_size * energy_grad
 
-            # Langevin Dynamics: Add noise (EBT regularization)
-            if self.training and self.langevin_noise_std > 0:
-                # Only add noise during training (not eval) if configured
-                if not (self.config.no_langevin_during_eval and not self.training):
-                    langevin_noise = torch.randn_like(predictions) * self.langevin_noise_std
-                    predictions = predictions + langevin_noise
+                # Langevin Dynamics: Add noise (EBT regularization)
+                if self.training and self.langevin_noise_std > 0:
+                    # Only add noise during training (not eval) if configured
+                    if not (self.config.no_langevin_during_eval and not self.training):
+                        langevin_noise = torch.randn_like(predictions) * self.langevin_noise_std
+                        predictions = predictions + langevin_noise
 
-            predictions = torch.clamp(predictions, 0, 1)
+                predictions = torch.clamp(predictions, 0, 1)
+
+            if mcmc_step < num_mcmc_steps - 1:
+                predictions.requires_grad_(True)
 
             if return_all_steps:
                 step_energy = self.energy_function(features, predictions.unsqueeze(-1))
