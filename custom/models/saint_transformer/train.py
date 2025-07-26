@@ -87,17 +87,17 @@ def validate_model(model: SAINTTransformer, dataloader: DataLoader, device: torc
     all_probs = []
     all_targets = []
 
-    with torch.no_grad():
-        for batch in dataloader:
-            x, y, attention_mask = batch
-            x = {k: v.to(device) for k, v in x.items()}
-            y, attention_mask = y.to(device), attention_mask.to(device)
+    # with torch.no_grad():
+    for batch in dataloader:
+        x, y, attention_mask = batch
+        x = {k: v.to(device) for k, v in x.items()}
+        y, attention_mask = y.to(device), attention_mask.to(device)
 
-            loss, probs, y_masked = model.compute_step((x, y, attention_mask), False)
+        loss, probs, y_masked = model.compute_step((x, y, attention_mask), False)
 
-            all_losses.append(loss.item())
-            all_probs.append(probs.detach().cpu())
-            all_targets.append(y_masked.detach().cpu())
+        all_losses.append(loss.item())
+        all_probs.append(probs.detach().cpu())
+        all_targets.append(y_masked.detach().cpu())
 
     # --- Calculate metrics ---
     avg_loss = sum(all_losses) / len(all_losses)

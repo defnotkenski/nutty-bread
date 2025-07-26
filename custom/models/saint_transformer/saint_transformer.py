@@ -235,38 +235,3 @@ class SAINTTransformer(nn.Module):
                     setattr(module, name, attr.to(device))
 
         return self
-
-    def compute_energy_loss(self, features, candidate_predictions, targets, attention_mask):
-        """
-        EBT default approach: Energy scores ARE the logits.
-        Standard cross-entropy loss between energy outputs and targets.
-        """
-
-        # Compute energy scores
-        energy_scores = self.energy_function(features, candidate_predictions)
-
-        # Apply attention mask
-        valid_mask = attention_mask.bool()
-        energy_logits = energy_scores[valid_mask]
-        targets_masked = targets[valid_mask]
-
-        loss = f.binary_cross_entropy_with_logits(energy_logits, targets_masked, pos_weight=self.pos_weight)
-
-        return loss
-
-    def compute_contrastive_loss(self, features, predictions, targets, attention_mask):
-        """
-        EBT contrastive loss: push down energy of true samples, up energy of false samples.
-        """
-        # Energy of current predictions
-        current_energy = self.energy_function(features, predictions.unsqueeze(-1))
-
-        # Apply mask
-        valid_mask = attention_mask.bool()
-        energy_masked = current_energy[valid_mask]
-        targets_masked = targets[valid_mask]
-
-        # Contrastive loss: minimize energy where target=1 (true samples)
-        contrastive_loss = (energy_masked * targets_masked).mean()
-
-        return contrastive_loss
