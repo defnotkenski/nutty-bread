@@ -7,6 +7,24 @@ class SAINTConfig:
     # Notes
     notes: str = "This is the original."
 
+    # EBT hyperparams
+    mcmc_num_steps: int = 2
+    mcmc_step_size: float = 0.1
+
+    # Langevin hyperparams
+    langevin_dynamics_noise: float = 0.1  # Noise std for Langevin dynamics
+    langevin_dynamics_noise_learnable: bool = False  # Make noise learnable
+    no_langevin_during_eval: bool = True  # Disable noise during validation
+
+    # Replay Buffer Parameters
+    mcmc_replay_buffer: bool = True  # Enable replay buffer
+    mcmc_replay_buffer_size: int = 192  # Buffer size
+    mcmc_replay_buffer_sample_bs_percent: float = 0.5  # % of batch from buffer
+
+    # MCMC Randomization
+    randomize_mcmc_num_steps: int = 1  # Max random variation in steps
+    randomize_mcmc_num_steps_min: int = 2  # Min steps when randomizing
+
     # Model hyperparams
     learning_rate: float = 1e-5  # If using prodigy-plus, lr is automatically set to 1.0
     d_model: int = 64
