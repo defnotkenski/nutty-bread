@@ -21,6 +21,7 @@ class SAINTConfig:
     log_every_n_steps: int = 50
 
     # Training hyperparams
+    disable_torch_compile: bool = False
     random_state: int = 777
     batch_size: int = 32
     num_workers: int = 6

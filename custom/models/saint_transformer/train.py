@@ -134,6 +134,7 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
         pos_weight=pos_weight,
         config=config,
     )
+    saint_model = torch.compile(saint_model, mode="default", disable=config.disable_torch_compile)
 
     # --- Move the model to the GPU if CUDA is available ---
     device = config.device
