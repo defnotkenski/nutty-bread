@@ -120,14 +120,13 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
 
     train_dataloader, val_dataloader, eval_dataloader, preprocessed = prepare_data(path_to_csv, config)
 
-    # Calculate pos_weight for weighted BCE loss fn
+    # --- Calculate pos_weight for weighted BCE loss fn ---
     pos_weight = calc_pos_weight(preprocessed)
 
-    # Create model
+    # --- Create model ---
     saint_model = SAINTTransformer(
         continuous_dims=preprocessed.continuous_tensor.shape[1],
         categorical_dims=preprocessed.categorical_cardinalities,
-        learning_rate=config.learning_rate,
         num_block_layers=config.num_block_layers,
         d_model=config.d_model,
         num_heads=config.num_attention_heads,
@@ -165,6 +164,16 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
 
             scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     elif config.optimizer == "prodigy-plus":
+        print(f"--- Optimizer info ---")
+        print(f"Detected {config.optimizer} optimizer. Setting appropriate hyperparams based on config.")
+        print(f"------\n")
+
+        config.learning_rate = 1.0
+        config.gradient_clip_val = None
+
+        if config.prodigy_use_speed:
+            config.weight_decay = 0.0
+
         optimizer = ProdigyPlusScheduleFree(
             saint_model.parameters(),
             lr=config.learning_rate,
@@ -173,7 +182,6 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
             use_orthograd=config.prodigy_use_orthograd,
             use_focus=config.prodigy_use_focus,
         )
-        config.learning_rate = 1.0
 
     # --- Finetuning and Evaluation Loop ---
     print("--- Starting Finetuning & Evaluation ---")
@@ -187,6 +195,8 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
             p_bar = tqdm(train_dataloader, desc=f"Training Epoch {epoch}")
 
             saint_model.train()
+            if config.optimizer == "prodigy-plus":
+                optimizer.train()
             mclogger.set_context("train")
 
             for batch in p_bar:
@@ -201,7 +211,7 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
                 loss, probs, y_masked = saint_model.compute_step((x, y, attention_mask), True)
 
                 # --- Training metric to log ---
-                if mclogger.global_step % 50 == 0:
+                if mclogger.should_log():
                     train_acc = accuracy_score(y_masked.detach().cpu(), (probs > 0.5).detach().cpu())
                     mclogger.log("accuracy", train_acc)
 
@@ -216,10 +226,12 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
 
             # --- Scheduler step after epoch completion ---
             if scheduler:
-                scheduler.step()
                 mclogger.log("lr", scheduler.get_last_lr()[0])
+                scheduler.step()
 
         # --- Validation loop ---
+        if config.optimizer == "prodigy-plus":
+            optimizer.eval()
         epoch_avg_loss, epoch_accuracy, epoch_auroc = validate_model(saint_model, val_dataloader, config.device)
 
         # --- Log validation metrics ---

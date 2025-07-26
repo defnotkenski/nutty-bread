@@ -21,21 +21,16 @@ class McLogger:
     def set_context(self, context: Literal["train", "val", "meta"]):
         self._context = context
 
-    def log(self, name, value, on_step=None, on_epoch=None):
+    def log(self, name, value):
         if self._context == "train":
-            should_log = on_step if on_step is not None else True
-            if should_log and self.global_step % self.config.log_every_n_steps == 0:
+            if self.global_step % self.config.log_every_n_steps == 0:
                 self._write_log(f"{self._context}/{name}", value)
 
         elif self._context == "val":
-            should_log = on_epoch if on_epoch is not None else True
-            if should_log:
-                self._write_log(f"{self._context}/{name}", value)
+            self._write_log(f"{self._context}/{name}", value)
 
         elif self._context == "meta":
-            should_log = on_epoch if on_epoch is not None else True
-            if should_log:
-                self._write_log(f"{self._context}/{name}", value)
+            self._write_log(f"{self._context}/{name}", value)
 
     def _write_log(self, key, value):
         if self.neptune_run:
@@ -46,3 +41,6 @@ class McLogger:
 
     def stop(self):
         self.neptune_run.stop()
+
+    def should_log(self):
+        return self.global_step % self.config.log_every_n_steps == 0

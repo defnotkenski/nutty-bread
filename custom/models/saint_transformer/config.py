@@ -8,7 +8,7 @@ class SAINTConfig:
     notes: str = "This is the original."
 
     # Model hyperparams
-    learning_rate: float = 1e-5  # Set to 1.0 for Prodify otherwise 1e-5 is a good start.
+    learning_rate: float = 1e-5  # If using prodigy-plus, lr is automatically set to 1.0
     d_model: int = 64
     num_block_layers: int = 4
     num_attention_heads: int = 8
@@ -39,10 +39,10 @@ class SAINTConfig:
     shuffle: bool = False
 
     # Optimizer hyperparams
-    optimizer: Literal["prodigy-plus", "adamw"] = "adamw"
-    scheduler: Literal["cosine", "lambda"] | None = "lambda"
+    optimizer: Literal["prodigy-plus", "adamw"] = "prodigy-plus"
+    scheduler: Literal["cosine", "lambda"] | None = None
     prodigy_use_speed: bool = True
     prodigy_use_orthograd: bool = False
     prodigy_use_focus: bool = False
-    weight_decay: float = 0.1  # Set to 0.0 if using Prodigy Speed otherwise 0.1 is good
+    weight_decay: float = 0.1  # Automatically set to 0.0 if using prodigy's speed
     betas: tuple[float, float] = (0.9, 0.95)

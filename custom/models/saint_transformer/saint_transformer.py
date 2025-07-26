@@ -17,7 +17,6 @@ class SAINTTransformer(nn.Module):
         d_model: int,
         num_heads: int,
         output_size: int,
-        learning_rate: float,
         pos_weight: float,
         config: SAINTConfig,
     ):
@@ -27,7 +26,6 @@ class SAINTTransformer(nn.Module):
         self.config = config
 
         # === Training Parameters ===
-        self.learning_rate = learning_rate
         self.pos_weight = torch.tensor(pos_weight)
 
         # === Model Architecture ===
