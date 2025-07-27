@@ -167,7 +167,7 @@ class SAINTTransformer(nn.Module):
                         langevin_noise = torch.randn_like(predictions) * self.langevin_noise_std
                         predictions = predictions + langevin_noise
 
-                predictions = torch.clamp(predictions, 0, 1)
+                predictions = torch.clamp(predictions, 1e-7, 1 - 1e-7)
 
             if mcmc_step < num_mcmc_steps - 1:
                 predictions.requires_grad_(True)
