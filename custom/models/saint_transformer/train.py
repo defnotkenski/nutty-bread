@@ -21,6 +21,8 @@ def calc_pos_weight(preprocessed):
     neg_count = len(target_series) - pos_count
     pos_weight = neg_count / pos_count
 
+    # Cap pos weight for stability
+    pos_weight = min(pos_weight, 5.0)
     return pos_weight
 
 
