@@ -26,7 +26,7 @@ class SAINTConfig:
     randomize_mcmc_num_steps_min: int = 2  # Min steps when randomizing
 
     # Model hyperparams
-    learning_rate: float = 1e-4  # If using prodigy-plus, lr is automatically set to 1.0
+    learning_rate: float = 1e-3  # If using prodigy-plus, lr is automatically set to 1.0
     d_model: int = 64
     num_block_layers: int = 4
     num_attention_heads: int = 8
@@ -66,7 +66,7 @@ class SAINTConfig:
     betas: tuple[float, float] = (0.9, 0.999)
 
     # Scheduler hyperparams
-    scheduler: Literal["cosine"] | None = "cosine"
+    scheduler: Literal["cosine"] | None = None
     warmup_steps: int = 10000
     warmup_pct: float = 0.1
     min_lr_ratio: float = 0.1
