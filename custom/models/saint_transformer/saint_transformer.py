@@ -166,7 +166,7 @@ class SAINTTransformer(nn.Module):
                     langevin_noise = torch.randn_like(predictions).detach() * self.langevin_noise_std
                     predictions = predictions + langevin_noise
 
-            predictions = torch.sigmoid(predictions * 10) * (1 - 2e-7) + 1e-7
+            predictions = (torch.tanh(predictions - 0.5) + 1) / 2 * (1 - 2e-7) + 1e-7
 
             if return_all_steps:
                 all_step_logits.append(predictions.unsqueeze(-1))
@@ -195,8 +195,7 @@ class SAINTTransformer(nn.Module):
 
         # Compute loss for each MCMC step
         for step_idx in range(num_steps):
-            # step_predictions = all_step_predictions[step_idx].squeeze(-1)
-            step_predictions = torch.clamp(all_step_predictions[step_idx].squeeze(-1), 0, 1)
+            step_predictions = all_step_predictions[step_idx].squeeze(-1)
 
             valid_mask = attention_mask.bool()
             step_pred_masked = step_predictions[valid_mask]

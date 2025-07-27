@@ -26,7 +26,7 @@ class SAINTConfig:
     randomize_mcmc_num_steps_min: int = 2  # Min steps when randomizing
 
     # Model hyperparams
-    learning_rate: float = 1e-4  # If using prodigy-plus, lr is automatically set to 1.0
+    learning_rate: float = 3e-4  # If using prodigy-plus, lr is automatically set to 1.0
     d_model: int = 64
     num_block_layers: int = 4
     num_attention_heads: int = 8
@@ -45,8 +45,8 @@ class SAINTConfig:
     num_workers: int = 6
     accumulate_grad_batches: int = 1
     gradient_clip_val: float | None = 1.0
-    max_epochs: int = 150
-    enable_checkpointing: bool | None = True
+    max_epochs: int = 50
+    enable_checkpointing: bool = False
     precision: str | None = None
     early_stopping: bool = False
 
