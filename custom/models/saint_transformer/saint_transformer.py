@@ -173,20 +173,22 @@ class SAINTTransformer(nn.Module):
                 predictions.requires_grad_(True)
 
             if return_all_steps:
-                step_energy = self.energy_function(features, predictions.unsqueeze(-1))
-                all_step_logits.append(step_energy.unsqueeze(-1))
+                # step_energy = self.energy_function(features, predictions.unsqueeze(-1))
+                # all_step_logits.append(step_energy.unsqueeze(-1))
+                all_step_logits.append(predictions.unsqueeze(-1))
 
         # --- Store predictions in replay buffer for future use ---
         if self.training and self.replay_buffer is not None:
             self.replay_buffer.add(predictions)
 
         # --- Return final scores as logits ---
-        final_energy = self.energy_function(features, predictions.unsqueeze(-1))
+        # final_energy = self.energy_function(features, predictions.unsqueeze(-1))
 
         if return_all_steps:
             return torch.stack(all_step_logits, dim=0)
         else:
-            return final_energy.unsqueeze(-1)
+            # return final_energy.unsqueeze(-1)
+            return predictions.unsqueeze(-1)
 
     def compute_step(
         self, batch: tuple[dict[str, Tensor], Tensor, Tensor], apply_label_smoothing: bool
@@ -202,7 +204,8 @@ class SAINTTransformer(nn.Module):
 
         # Compute loss for each MCMC step
         for step_idx in range(num_steps):
-            step_predictions = all_step_predictions[step_idx].squeeze(-1)
+            # step_predictions = all_step_predictions[step_idx].squeeze(-1)
+            step_predictions = torch.clamp(all_step_predictions[step_idx].squeeze(-1), 0, 1)
 
             valid_mask = attention_mask.bool()
             step_pred_masked = step_predictions[valid_mask]
@@ -214,11 +217,14 @@ class SAINTTransformer(nn.Module):
                 y_step_masked = y_step_masked * (1 - smoothing_factor) + (1 - y_step_masked) * smoothing_factor
 
             # Compute step loss
-            step_loss = f.binary_cross_entropy_with_logits(step_pred_masked, y_step_masked, pos_weight=self.pos_weight)
+            # step_loss = f.binary_cross_entropy_with_logits(step_pred_masked, y_step_masked, pos_weight=self.pos_weight)
+            weights = self.pos_weight * y_step_masked + (1 - y_step_masked)
+            step_loss = f.binary_cross_entropy(step_pred_masked, y_step_masked, weight=weights, reduction="mean")
             total_loss += step_loss
 
             if step_idx == num_steps - 1:
-                final_probs = torch.sigmoid(step_pred_masked)
+                # final_probs = torch.sigmoid(step_pred_masked)
+                final_probs = step_pred_masked
                 y_masked = y_step_masked
 
         avg_loss = total_loss / num_steps
