@@ -157,32 +157,23 @@ class SAINTTransformer(nn.Module):
             energy_grad = torch.autograd.grad(total_energy, predictions, create_graph=True)[0]
             energy_grad = energy_grad * attention_mask.float()
 
-            with torch.no_grad():
-                predictions = predictions - self.config.mcmc_step_size * energy_grad
+            predictions = predictions - self.config.mcmc_step_size * energy_grad
 
-                # Langevin Dynamics: Add noise (EBT regularization)
-                if self.training and self.langevin_noise_std > 0:
-                    # Only add noise during training (not eval) if configured
-                    if not (self.config.no_langevin_during_eval and not self.training):
-                        langevin_noise = torch.randn_like(predictions) * self.langevin_noise_std
-                        predictions = predictions + langevin_noise
+            # Langevin Dynamics: Add noise (EBT regularization)
+            if self.training and self.langevin_noise_std > 0:
+                # Only add noise during training (not eval) if configured
+                if not (self.config.no_langevin_during_eval and not self.training):
+                    langevin_noise = torch.randn_like(predictions).detach() * self.langevin_noise_std
+                    predictions = predictions + langevin_noise
 
-                predictions = torch.clamp(predictions, 1e-7, 1 - 1e-7)
-
-            if mcmc_step < num_mcmc_steps - 1:
-                predictions.requires_grad_(True)
+            predictions = torch.sigmoid(predictions * 10) * (1 - 2e-7) + 1e-7
 
             if return_all_steps:
-                # step_energy = self.energy_function(features, predictions.unsqueeze(-1))
-                # all_step_logits.append(step_energy.unsqueeze(-1))
                 all_step_logits.append(predictions.unsqueeze(-1))
 
         # --- Store predictions in replay buffer for future use ---
         if self.training and self.replay_buffer is not None:
             self.replay_buffer.add(predictions)
-
-        # --- Return final scores as logits ---
-        # final_energy = self.energy_function(features, predictions.unsqueeze(-1))
 
         if return_all_steps:
             return torch.stack(all_step_logits, dim=0)
