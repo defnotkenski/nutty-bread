@@ -41,7 +41,7 @@ class SAINTConfig:
     # Training hyperparams
     disable_torch_compile: bool = False
     random_state: int = 777
-    batch_size: int = 16
+    batch_size: int = 32
     num_workers: int = 6
     accumulate_grad_batches: int = 1
     gradient_clip_val: float | None = 1.0
