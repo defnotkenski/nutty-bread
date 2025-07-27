@@ -11,6 +11,7 @@ from sklearn.metrics import roc_auc_score, accuracy_score
 from tqdm import tqdm
 from prodigyplus import ProdigyPlusScheduleFree
 from custom.commons.logger import McLogger
+from torch.optim.lr_scheduler import OneCycleLR
 
 
 def calc_pos_weight(preprocessed):
@@ -150,20 +151,16 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
         )
 
         if config.scheduler == "cosine":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.max_epochs)
-        elif config.scheduler == "lambda":
+            total_steps = len(train_dataloader) * config.max_epochs
+            scheduler = OneCycleLR(
+                optimizer,
+                max_lr=config.learning_rate,
+                total_steps=total_steps,
+                pct_start=config.warmup_pct,
+                anneal_strategy="cos",
+                final_div_factor=1 / config.min_lr_ratio,
+            )
 
-            def lr_lambda(step):
-                warmup_steps = config.max_epochs // 10  # 10% warmup
-                if step < warmup_steps:
-                    # Linear warmup
-                    return step / warmup_steps
-                else:
-                    # Polynomial decay
-                    progress = (step - warmup_steps) / (config.max_epochs - warmup_steps)
-                    return max(0.1, (1 - progress) ** 0.5)
-
-            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     elif config.optimizer == "prodigy-plus":
         print(f"--- Optimizer info ---")
         print(f"Detected {config.optimizer} optimizer. Setting appropriate hyperparams based on config.")
@@ -221,14 +218,19 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
 
                 # --- Backward pass and step forward with optimizer or scheduler ---
                 loss.backward()
+
+                # --- Implement gradient clipping ---
+                if config.gradient_clip_val is not None:
+                    torch.nn.utils.clip_grad_norm_(saint_model.parameters(), config.gradient_clip_val)
+
                 optimizer.step()
 
-                p_bar.set_postfix(loss=f"{loss.item():.4f}")
+                # --- Scheduler step after batch completion ---
+                if scheduler:
+                    mclogger.log("lr", scheduler.get_last_lr()[0])
+                    scheduler.step()
 
-            # --- Scheduler step after epoch completion ---
-            if scheduler:
-                mclogger.log("lr", scheduler.get_last_lr()[0])
-                scheduler.step()
+                p_bar.set_postfix(loss=f"{loss.item():.4f}")
 
         # --- Validation loop ---
         if config.optimizer == "prodigy-plus":

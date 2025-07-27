@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Literal
+from typing import Literal
 
 
 @dataclass
@@ -26,7 +26,7 @@ class SAINTConfig:
     randomize_mcmc_num_steps_min: int = 2  # Min steps when randomizing
 
     # Model hyperparams
-    learning_rate: float = 1e-5  # If using prodigy-plus, lr is automatically set to 1.0
+    learning_rate: float = 1e-4  # If using prodigy-plus, lr is automatically set to 1.0
     d_model: int = 64
     num_block_layers: int = 4
     num_attention_heads: int = 8
@@ -44,7 +44,7 @@ class SAINTConfig:
     batch_size: int = 32
     num_workers: int = 6
     accumulate_grad_batches: int = 1
-    gradient_clip_val: Optional[float] = None
+    gradient_clip_val: float | None = 1.0
     max_epochs: int = 30
     enable_checkpointing: bool | None = True
     precision: str | None = None
@@ -58,10 +58,15 @@ class SAINTConfig:
     shuffle: bool = False
 
     # Optimizer hyperparams
-    optimizer: Literal["prodigy-plus", "adamw"] = "prodigy-plus"
-    scheduler: Literal["cosine", "lambda"] | None = None
+    optimizer: Literal["prodigy-plus", "adamw"] = "adamw"
     prodigy_use_speed: bool = True
     prodigy_use_orthograd: bool = False
     prodigy_use_focus: bool = False
-    weight_decay: float = 0.1  # Automatically set to 0.0 if using prodigy's speed
-    betas: tuple[float, float] = (0.9, 0.95)
+    weight_decay: float = 0.01  # Automatically set to 0.0 if using prodigy's speed
+    betas: tuple[float, float] = (0.9, 0.999)
+
+    # Scheduler hyperparams
+    scheduler: Literal["cosine"] | None = "cosine"
+    warmup_steps: int = 10000
+    warmup_pct: float = 0.1
+    min_lr_ratio: float = 0.1
