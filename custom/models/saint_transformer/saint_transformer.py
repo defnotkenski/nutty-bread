@@ -1,5 +1,4 @@
 import torch
-from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as f
 from custom.blocks.energy_function_blocks import EnergyFunction
@@ -8,6 +7,9 @@ from custom.layers.dual_attention_layer import DualAttentionLayer
 from custom.models.saint_transformer.config import SAINTConfig
 from custom.commons.batched_embedding import BatchedEmbedding
 from custom.blocks.attention_pooling_blocks import AttentionPooling
+
+# Import types
+from torch import Tensor
 
 
 class SAINTTransformer(nn.Module):
@@ -66,6 +68,107 @@ class SAINTTransformer(nn.Module):
         else:
             self.register_buffer("langevin_noise_std", torch.tensor(config.langevin_dynamics_noise))
 
+    @staticmethod
+    def _create_block_diagonal_mask(attention_mask: Tensor) -> tuple[Tensor, Tensor, int]:
+        """
+        Creates a block-diagonal attention mask to prevent cross-race attention.
+
+        Args:
+            attention_mask: [batch_size, max_horses] - 1 for real horses, 0 for padding
+        """
+        batch_size, max_horses = attention_mask.shape
+
+        # Calc race lengths (real horses + 1 CLS token per race)
+        race_lengths = attention_mask.sum(dim=1) + 1
+        total_seq = race_lengths.sum().item()
+
+        # Calc cumulative start positions for each race
+        cum_lengths = torch.cumsum(race_lengths, dim=0)
+        starts = torch.cat([torch.tensor([0], device=attention_mask.device), cum_lengths[:-1]])
+
+        # Create block-diagonal mask [total_seq, total_seq]
+        block_mask = torch.zeros(total_seq, total_seq, device=attention_mask.device, dtype=torch.bool)
+
+        # Fill diagonal blocks
+        for i in range(batch_size):
+            start_pos = starts[i].item()
+            end_pos = cum_lengths[i].item()
+
+            block_mask[start_pos:end_pos, start_pos:end_pos] = True
+
+        return block_mask, race_lengths, total_seq
+
+    def _flatten_races_with_cls(self, x: Tensor, race_lengths: Tensor) -> Tensor:
+        """Flattens all races into a single sequence, adding CLS tokens per race."""
+        batch_size, horse_len, num_features, d_model = x.shape
+        flattened_sequences = []
+
+        for race_idx in range(batch_size):
+            # Get only real horses (no padding)
+            num_real_horses = race_lengths[race_idx] - 1
+            race_x_real = x[race_idx, :num_real_horses]
+
+            # Add CLS token for this race
+            race_cls_token = self.race_cls_token.expand(1, num_features, d_model)
+            race_x_with_cls = torch.cat([race_x_real, race_cls_token], dim=0)
+
+            flattened_sequences.append(race_x_with_cls)
+
+        flattened_x = torch.cat(flattened_sequences, dim=0)
+        return flattened_x
+
+    def _unflatten_to_race_outputs(
+        self, flattened_x: Tensor, race_lengths: Tensor, horse_len: int, d_model: int
+    ) -> list[Tensor]:
+        """Splits flattened transformer output back into per-race processed results."""
+        # Split flattened output back into per-race chunks
+        race_chunks = torch.split(flattened_x, race_lengths.tolist(), dim=0)
+        race_outputs = []
+
+        for race_idx, race_chunk in enumerate(race_chunks):
+            # Last position is CLS token, rest are horses
+            race_cls = race_chunk[-1]
+            horse_representations = race_chunk[:-1]
+
+            num_real_horses = race_lengths[race_idx] - 1
+
+            # Apply pooling
+            horse_features = self.pooler(horse_representations)
+            race_context = self.pooler(race_cls.unsqueeze(0)).squeeze(0)
+
+            # Expand race context to match horse count
+            race_context_expanded = race_context.unsqueeze(0).expand(num_real_horses, -1)
+
+            # Combine and project
+            combined = torch.cat([horse_features, race_context_expanded], dim=-1)
+            cls_tokens = self.race_projection(combined)
+
+            # Pad to full batch length
+            padded_cls_tokens = torch.zeros(horse_len, d_model, device=cls_tokens.device)
+            padded_cls_tokens[:num_real_horses] = cls_tokens
+
+            race_outputs.append(padded_cls_tokens)
+
+        return race_outputs
+
+    def _vectorized_processing(self, x: Tensor, attention_mask: Tensor):
+        """Replaces the squential per-race loop with a single call"""
+        batch_size, horse_len, num_features, d_model = x.shape
+
+        # Create block-diagonal mask
+        block_mask, race_lengths, total_seq = self._create_block_diagonal_mask(attention_mask)
+
+        # Flatten all races into sequence
+        flattened_x = self._flatten_races_with_cls(x, race_lengths)
+
+        # Pass through transformer blocks
+        for block in self.transformer_blocks:
+            flattened_x = block(flattened_x, block_mask)
+
+        race_outputs = self._unflatten_to_race_outputs(flattened_x, race_lengths, horse_len, d_model)
+
+        return race_outputs
+
     def forward(
         self,
         x: dict[str, torch.Tensor],
@@ -89,49 +192,8 @@ class SAINTTransformer(nn.Module):
             num_features == self.race_cls_token.shape[1]
         ), f"Feature mismatch: {num_features} vs {self.race_cls_token.shape[1]}"
 
-        # --- Process each race seperately to maintain race boundaries ---
-        race_outputs = []
-        for race_idx in range(batch_size):
-            race_mask = attention_mask[race_idx]
-            race_x = x[race_idx]
-
-            # --- Add class token ---
-            race_cls_token = self.race_cls_token.expand(1, num_features, d_model)
-            race_x_with_cls = torch.cat([race_x, race_cls_token], dim=0)
-
-            # --- Create mask for class token ---
-            cls_mask = torch.ones(1, device=race_mask.device)
-            full_mask = torch.cat([race_mask, cls_mask], dim=0)
-
-            assert (
-                full_mask.sum() > 0
-            ), f"Race {race_idx}: All positions masked - race_mask sum: {race_mask.sum()}, cls_mask sum: {cls_mask.sum()}"
-
-            # --- Pass through transformer blocks ---
-            for block in self.transformer_blocks:
-                race_x_with_cls = block(race_x_with_cls, full_mask)
-
-            # --- Extract class token ---
-            race_cls = race_x_with_cls[-1]  # class token
-            horse_representations = race_x_with_cls[:-1]  # All horses (including padding)
-
-            # --- Apply mask when computing features (only use real horses) ---
-            num_real_horses = int(race_mask.sum())
-            horse_reps_real = horse_representations[:num_real_horses]
-
-            horse_features: Tensor = self.pooler(horse_reps_real)
-
-            # --- Combine horse features with race context ---
-            race_context: Tensor = self.pooler(race_cls.unsqueeze(0)).squeeze(0)
-            race_context_expanded = race_context.unsqueeze(0).expand(num_real_horses, -1)
-
-            combined = torch.cat([horse_features, race_context_expanded], dim=-1)
-            cls_tokens = self.race_projection(combined)
-
-            # --- Pad to full length ---
-            padded_cls_tokens = torch.zeros(horse_len, d_model, device=cls_tokens.device)
-            padded_cls_tokens[:num_real_horses] = cls_tokens
-            race_outputs.append(padded_cls_tokens)
+        # --- Vectorized processing ---
+        race_outputs = self._vectorized_processing(x, attention_mask)
 
         features = torch.stack(race_outputs)
 

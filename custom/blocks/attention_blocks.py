@@ -110,10 +110,13 @@ class InterRowAttention(nn.Module):
 
         # Apply attention mask
         if attention_mask is not None:
-            # Attention mask shape: (horse_len,) where 1=real, 0=padded
-
-            # Create 2D mask: (horse_len, horse_len)
-            mask_2d = attention_mask.unsqueeze(1) * attention_mask.unsqueeze(0)
+            if attention_mask.dim() == 1:
+                # Attention mask shape: (horse_len,) where 1=real, 0=padded
+                # Legacy: Create 2D mask: (horse_len, horse_len)
+                mask_2d = attention_mask.unsqueeze(1) * attention_mask.unsqueeze(0)
+            else:
+                # Vectorized: Use pre-built 2D block-diagonal mask (total_seq, total_seq)
+                mask_2d = attention_mask
 
             # Expand for multihead: (num_heads, horse_len, horse_len)
             mask_expanded = mask_2d.unsqueeze(0).expand(self.num_heads, -1, -1)
