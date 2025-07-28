@@ -82,7 +82,7 @@ class ModelTrainer:
             shuffle=shuffle,
             num_workers=num_workers,
             pin_memory=pin_memory,
-            # drop_last=True,
+            drop_last=True,
             collate_fn=collate_races,
         )
         val_dataloader = DataLoader(
