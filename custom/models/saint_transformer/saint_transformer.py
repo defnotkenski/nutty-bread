@@ -153,11 +153,11 @@ class SAINTTransformer(nn.Module):
 
             masked_energy = energy_scores * attention_mask.float()
 
-            # total_energy = masked_energy.sum() # Fixed a bug where bias is towards longer races
-            energy_per_race = masked_energy.sum(dim=1)
-            horses_per_race = attention_mask.sum(dim=1)
-            mean_energy_per_race = energy_per_race / horses_per_race
-            total_energy = mean_energy_per_race.mean()
+            total_energy = masked_energy.sum()  # Fixed a bug where bias is towards longer races
+            # energy_per_race = masked_energy.sum(dim=1)
+            # horses_per_race = attention_mask.sum(dim=1)
+            # mean_energy_per_race = energy_per_race / horses_per_race
+            # total_energy = mean_energy_per_race.mean()
 
             energy_grad = torch.autograd.grad(total_energy, predictions, create_graph=True)[0]
             energy_grad = energy_grad * attention_mask.float()
