@@ -79,8 +79,8 @@ class SAINTTransformer(nn.Module):
         batch_size, max_horses = attention_mask.shape
 
         # Calc race lengths (real horses + 1 CLS token per race)
-        race_lengths = attention_mask.sum(dim=1) + 1
-        total_seq = race_lengths.sum().item()
+        race_lengths = attention_mask.sum(dim=1).int() + 1
+        total_seq = int(race_lengths.sum().item())
 
         # Calc cumulative start positions for each race
         cum_lengths = torch.cumsum(race_lengths, dim=0)
