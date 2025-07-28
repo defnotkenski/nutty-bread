@@ -1,4 +1,5 @@
-from custom.models.saint_transformer.train import train_model
+from custom.models.saint_transformer.trainer import ModelTrainer
+from custom.models.saint_transformer.config import SAINTConfig
 from pathlib import Path
 import modal
 import torch
@@ -40,7 +41,10 @@ def run_with_modal() -> None:
     print(f"CUDA status: {has_cuda}")
 
     modal.interact()
-    train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True)
+    config_modal = SAINTConfig()
+    trainer_modal = ModelTrainer(config_modal)
+
+    trainer_modal.train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True)
 
     return
 
@@ -52,5 +56,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # --- Train model without ensembling ---
-    train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True)
+    config = SAINTConfig()
+    trainer = ModelTrainer(config)
+
+    trainer.train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True)
