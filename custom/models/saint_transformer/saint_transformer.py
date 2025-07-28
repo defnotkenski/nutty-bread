@@ -155,7 +155,7 @@ class SAINTTransformer(nn.Module):
 
             # total_energy = masked_energy.sum() # Fixed a bug where bias is towards longer races
             energy_per_race = masked_energy.sum(dim=1)
-            horses_per_race = attention_mask.sum(dim=-1)
+            horses_per_race = attention_mask.sum(dim=1)
             mean_energy_per_race = energy_per_race / horses_per_race
             total_energy = mean_energy_per_race.mean()
 

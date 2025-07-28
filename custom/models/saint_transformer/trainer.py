@@ -36,12 +36,12 @@ class ModelTrainer:
         self.config = config
 
         self.should_stop: bool = False
-        self.mclogger: McLogger | None = None
+        self.mclogger: McLogger = McLogger(config)
         self.device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.model: SAINTTransformer | None = None
-        self.optimizer: Optimizer | ProdigyPlusScheduleFree | None = None
-        self.scheduler: LRScheduler | None = None
+        # self.model: SAINTTransformer | None = None
+        # self.optimizer: Optimizer | ProdigyPlusScheduleFree | None = None
+        # self.scheduler: LRScheduler | None = None
 
         # Set up signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -108,7 +108,9 @@ class ModelTrainer:
 
         return train_dataloader, val_dataloader, eval_dataloader, preprocessed
 
-    def _prepare_optimizer(self, train_dataloader: DataLoader) -> None:
+    def _prepare_optimizer(
+        self, model: SAINTTransformer, train_dataloader: DataLoader
+    ) -> tuple[Optimizer | ProdigyPlusScheduleFree, LRScheduler | None]:
         """Create optimizer and scheduler"""
         config = self.config
         optimizer = None
@@ -116,7 +118,7 @@ class ModelTrainer:
 
         if config.optimizer == "adamw":
             optimizer = torch.optim.AdamW(
-                self.model.parameters(), lr=config.learning_rate, betas=config.betas, weight_decay=config.weight_decay
+                model.parameters(), lr=config.learning_rate, betas=config.betas, weight_decay=config.weight_decay
             )
 
             if config.scheduler == "cosine":
@@ -142,7 +144,7 @@ class ModelTrainer:
                 config.weight_decay = 0.0
 
             optimizer = ProdigyPlusScheduleFree(
-                self.model.parameters(),
+                model.parameters(),
                 lr=config.learning_rate,
                 weight_decay=config.weight_decay,
                 use_speed=config.prodigy_use_speed,
@@ -150,14 +152,15 @@ class ModelTrainer:
                 use_focus=config.prodigy_use_focus,
             )
 
-        self.optimizer = optimizer
-        self.scheduler = scheduler
+        # self.optimizer = optimizer
+        # self.scheduler = scheduler
+        return optimizer, scheduler
 
-    def _setup_model(self, preprocessed: PreProcessor) -> None:
+    def _setup_model(self, preprocessed: PreProcessor) -> SAINTTransformer:
         config = self.config
         pos_weight = calc_pos_weight(preprocessed)
 
-        self.model = SAINTTransformer(
+        model = SAINTTransformer(
             continuous_dims=preprocessed.continuous_tensor.shape[1],
             categorical_dims=preprocessed.categorical_cardinalities,
             num_block_layers=config.num_block_layers,
@@ -167,10 +170,19 @@ class ModelTrainer:
             pos_weight=pos_weight,
             config=config,
         )
-        self.model = torch.compile(self.model, mode="default", disable=config.disable_torch_compile)
-        self.model.to(self.device)
+        model = torch.compile(model, mode="default", disable=config.disable_torch_compile)
+        model.to(self.device)
 
-    def _train_epoch(self, epoch: int, train_dataloader: DataLoader) -> None:
+        return model
+
+    def _train_epoch(
+        self,
+        model: SAINTTransformer,
+        optimizer: Optimizer | ProdigyPlusScheduleFree,
+        scheduler: LRScheduler | None,
+        epoch: int,
+        train_dataloader: DataLoader,
+    ) -> None:
         """Train for one epoch"""
         config = self.config
         mclogger = self.mclogger
@@ -178,9 +190,9 @@ class ModelTrainer:
         if epoch == 0:
             return  # Skip training on epoch 0
 
-        self.model.train()
+        model.train()
         if config.optimizer == "prodigy-plus":
-            self.optimizer.train()
+            optimizer.train()
 
         mclogger.set_context("train")
         p_bar = tqdm(train_dataloader, desc=f"Training Epoch {epoch}")
@@ -197,8 +209,8 @@ class ModelTrainer:
             y, attention_mask = y.to(self.device), attention_mask.to(self.device)
 
             # --- Forward pass ---
-            self.optimizer.zero_grad()
-            loss, probs, y_masked = self.model.compute_step((x, y, attention_mask), True)
+            optimizer.zero_grad()
+            loss, probs, y_masked = model.compute_step((x, y, attention_mask), True)
 
             # --- Training metric to log ---
             if mclogger.should_log():
@@ -213,30 +225,30 @@ class ModelTrainer:
 
             # --- Implement gradient clipping ---
             if config.gradient_clip_val is not None:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), config.gradient_clip_val)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradient_clip_val)
 
-            self.optimizer.step()
+            optimizer.step()
 
             # --- Scheduler step after batch completion ---
-            if self.scheduler:
-                mclogger.log("lr", self.scheduler.get_last_lr()[0])
-                self.scheduler.step()
+            if scheduler:
+                mclogger.log("lr", scheduler.get_last_lr()[0])
+                scheduler.step()
 
             p_bar.set_postfix(loss=f"{loss.item():.4f}")
 
-    def _validate_model(self, val_dataloader: DataLoader):
-        self.model.eval()
+    def _validate_model(self, model: SAINTTransformer, dataloader: DataLoader):
+        model.eval()
 
         all_losses = []
         all_probs = []
         all_targets = []
 
-        for batch in val_dataloader:
+        for batch in dataloader:
             x, y, attention_mask = batch
             x = {k: v.to(self.device) for k, v in x.items()}
             y, attention_mask = y.to(self.device), attention_mask.to(self.device)
 
-            loss, probs, y_masked = self.model.compute_step((x, y, attention_mask), False)
+            loss, probs, y_masked = model.compute_step((x, y, attention_mask), False)
 
             all_losses.append(loss.item())
             all_probs.append(probs.detach().cpu())
@@ -263,30 +275,30 @@ class ModelTrainer:
         train_dataloader, val_dataloader, eval_dataloader, preprocessed = self._prepare_data(path_to_csv)
 
         # --- Prepare model and optimizer ---
-        self._setup_model(preprocessed)
-        self._prepare_optimizer(train_dataloader)
+        model = self._setup_model(preprocessed)
+        optimizer, scheduler = self._prepare_optimizer(model, train_dataloader)
 
         # --- Finetuning and Evaluation Loop ---
         print("--- Starting Finetuning & Evaluation ---")
-        print(f"Optimizer: \033[36m{self.optimizer.__class__.__name__}\033[0m")
-        print(f"Scheduler: \033[36m{self.scheduler.__class__.__name__ if self.scheduler else None}\033[0m")
-
-        # --- Initialize logging ---
-        self.mclogger = McLogger(config)
+        print(f"Optimizer: \033[36m{optimizer.__class__.__name__}\033[0m")
+        print(f"Scheduler: \033[36m{scheduler.__class__.__name__ if scheduler else None}\033[0m")
 
         # --- Training loop ---
         for epoch in range(config.max_epochs + 1):
+            # --- Train epoch ---
+            self._train_epoch(
+                model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, train_dataloader=train_dataloader
+            )
+
             if self.should_stop:
                 print(f"Gracefully stopped at epoch {epoch}")
                 break
 
-            # --- Train epoch ---
-            self._train_epoch(epoch, train_dataloader)
-
             # --- Validation loop ---
             if config.optimizer == "prodigy-plus":
-                self.optimizer.eval()
-            epoch_avg_loss, epoch_accuracy, epoch_auroc = self._validate_model(val_dataloader)
+                optimizer.eval()
+
+            epoch_avg_loss, epoch_accuracy, epoch_auroc = self._validate_model(model, dataloader=val_dataloader)
 
             # --- Log validation metrics ---
             self.mclogger.set_context("val")
@@ -310,7 +322,7 @@ class ModelTrainer:
 
         if perform_eval and not self.should_stop:
             print("--- Final Evaluation on Test Set ---")
-            test_avg_loss, test_accuracy, test_auroc = self._validate_model(eval_dataloader)
+            test_avg_loss, test_accuracy, test_auroc = self._validate_model(model, dataloader=eval_dataloader)
             print(f"Evaluation | Accuracy: {test_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}, ROC: {test_auroc:.4f}\n")
 
         # If it reaches this point, thank fuckin god
