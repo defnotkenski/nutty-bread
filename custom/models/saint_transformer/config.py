@@ -50,6 +50,9 @@ class SAINTConfig:
     precision: str | None = None
     early_stopping: bool = False
 
+    # Inference hyperparams
+    normalize_race_predictions: bool = False
+
     # Attention hyperparams
     num_competitors: int = 4
 
@@ -67,6 +70,5 @@ class SAINTConfig:
 
     # Scheduler hyperparams
     scheduler: Literal["cosine"] | None = "cosine"
-    warmup_steps: int = 10000
     warmup_pct: float = 0.1
     min_lr_ratio: float = 0.1

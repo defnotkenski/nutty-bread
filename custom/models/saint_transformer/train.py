@@ -12,6 +12,7 @@ from tqdm import tqdm
 from prodigyplus import ProdigyPlusScheduleFree
 from custom.commons.logger import McLogger
 from torch.optim.lr_scheduler import OneCycleLR
+import signal
 
 
 def calc_pos_weight(preprocessed):
@@ -118,6 +119,16 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
     print(f"CUDA Availability: {torch.cuda.is_available()}")
     print("------\n")
 
+    should_stop = False
+
+    def signal_handler(_signum, _frame):
+        nonlocal should_stop
+        print(f"Received graceful shutdown signal...")
+        should_stop = True
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     config = SAINTConfig()
     config.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -191,6 +202,10 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
     mclogger = McLogger(config)
 
     for epoch in range(config.max_epochs + 1):
+        if should_stop:
+            print(f"Gracefully stopped at epoch {epoch}")
+            break
+
         if epoch > 0:
             p_bar = tqdm(train_dataloader, desc=f"Training Epoch {epoch}")
 
@@ -200,6 +215,10 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
             mclogger.set_context("train")
 
             for batch in p_bar:
+                if should_stop:
+                    print(f"Gracefully stopped at epoch {epoch}")
+                    break
+
                 x, y, attention_mask = batch
 
                 # --- Move to device ---
@@ -259,7 +278,7 @@ def train_model(path_to_csv: Path, perform_eval: bool) -> None:
     # --- Perform evaluations after model training ---
     mclogger.stop()
 
-    if perform_eval:
+    if perform_eval and not should_stop:
         print("--- Final Evaluation on Test Set ---")
         test_avg_loss, test_accuracy, test_auroc = validate_model(saint_model, eval_dataloader, config.device)
         print(f"Evaluation | Accuracy: {test_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}, ROC: {test_auroc:.4f}\n")

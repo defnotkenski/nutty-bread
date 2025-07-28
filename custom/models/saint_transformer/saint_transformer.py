@@ -147,12 +147,17 @@ class SAINTTransformer(nn.Module):
 
         all_step_logits = []
 
+        predictions.requires_grad_(True)
         for mcmc_step in range(num_mcmc_steps):
-            predictions.requires_grad_(True)
             energy_scores = self.energy_function(features, predictions.unsqueeze(-1))
 
             masked_energy = energy_scores * attention_mask.float()
-            total_energy = masked_energy.sum()
+
+            # total_energy = masked_energy.sum() # Fixed a bug where bias is towards longer races
+            energy_per_race = masked_energy.sum(dim=1)
+            horses_per_race = attention_mask.sum(dim=-1)
+            mean_energy_per_race = energy_per_race / horses_per_race
+            total_energy = mean_energy_per_race.mean()
 
             energy_grad = torch.autograd.grad(total_energy, predictions, create_graph=True)[0]
             energy_grad = energy_grad * attention_mask.float()
@@ -174,6 +179,13 @@ class SAINTTransformer(nn.Module):
         # --- Store predictions in replay buffer for future use ---
         if self.training and self.replay_buffer is not None:
             self.replay_buffer.add(predictions)
+
+        # --- Apply race-level normalization (inference only) ---
+        if not self.training and self.config.normalize_race_predictions:
+            for race_idx in range(batch_size):
+                mask = attention_mask[race_idx].bool()
+                if mask.sum() > 1:
+                    predictions[race_idx][mask] = f.softmax(predictions[race_idx][mask], dim=0)
 
         if return_all_steps:
             return torch.stack(all_step_logits, dim=0)
