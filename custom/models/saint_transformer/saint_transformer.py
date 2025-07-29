@@ -172,8 +172,11 @@ class SAINTTransformer(nn.Module):
     def _mcmc_step(self, features: Tensor, predictions: Tensor, attention_mask: Tensor) -> Tensor:
         """Performs a single MCMC step: energy computation, gradient update, and regularization."""
 
+        # --- Convert logits to probabilities for energy/entropy calculations ---
+        probs = torch.sigmoid(predictions)
+
         # --- Energy computation ---
-        energy_scores = self.energy_function(features, predictions.unsqueeze(-1))
+        energy_scores = self.energy_function(features, probs.unsqueeze(-1))
         masked_energy = energy_scores * attention_mask.float()
 
         # --- Mean-based energy calculations ---
@@ -182,7 +185,7 @@ class SAINTTransformer(nn.Module):
         mean_energy_per_race = energy_per_race / horses_per_race
 
         # --- Binary entropy calculations ---
-        entropy = -(predictions * torch.log(predictions + 1e-7) + (1 - predictions) * torch.log(1 - predictions + 1e-7))
+        entropy = -(probs * torch.log(probs + 1e-7) + (1 - probs) * torch.log(1 - probs + 1e-7))
         masked_entropy = entropy * attention_mask.float()
         entropy_per_race = masked_entropy.sum(dim=1)
         mean_entropy_per_race = entropy_per_race / horses_per_race
@@ -203,7 +206,7 @@ class SAINTTransformer(nn.Module):
                 langevin_noise = torch.randn_like(predictions).detach() * self.langevin_noise_std
                 predictions = predictions + langevin_noise
 
-        predictions = (torch.tanh(predictions - 0.5) + 1) / 2 * (1 - 2e-7) + 1e-7
+        # predictions = (torch.tanh(predictions - 0.5) + 1) / 2 * (1 - 2e-7) + 1e-7
         return predictions
 
     def forward(
@@ -236,7 +239,7 @@ class SAINTTransformer(nn.Module):
 
         # --- Energy minimization with step tracking ---
         predictions = torch.randn(batch_size, horse_len, device=x.device) * 0.1
-        predictions = torch.clamp(predictions, min=1e-7, max=1.0 - 1e-7)
+        predictions = torch.clamp(predictions, min=-10, max=10)
 
         # --- Replay Buffer: Replace some predictions with stored ones ---
         if self.training and self.replay_buffer is not None and len(self.replay_buffer) > 0:
@@ -252,7 +255,7 @@ class SAINTTransformer(nn.Module):
             predictions = self._mcmc_step(features, predictions, attention_mask)
 
             if return_all_steps:
-                all_step_logits.append(predictions.unsqueeze(-1))
+                all_step_logits.append(torch.sigmoid(predictions).unsqueeze(-1))
 
         # --- Store predictions in replay buffer for future use ---
         if self.training and self.replay_buffer is not None:
@@ -268,7 +271,7 @@ class SAINTTransformer(nn.Module):
         if return_all_steps:
             return torch.stack(all_step_logits, dim=0)
         else:
-            return predictions.unsqueeze(-1)
+            return torch.sigmoid(predictions).unsqueeze(-1)
 
     def compute_step(
         self, batch: tuple[dict[str, Tensor], Tensor, Tensor], apply_label_smoothing: bool
@@ -302,7 +305,6 @@ class SAINTTransformer(nn.Module):
             total_loss += step_loss
 
             if step_idx == num_steps - 1:
-                # final_probs = torch.sigmoid(step_pred_masked)
                 final_probs = step_pred_masked
                 y_masked = y_step_masked
 
