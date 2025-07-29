@@ -169,6 +169,43 @@ class SAINTTransformer(nn.Module):
 
         return race_outputs
 
+    def _mcmc_step(self, features: Tensor, predictions: Tensor, attention_mask: Tensor) -> Tensor:
+        """Performs a single MCMC step: energy computation, gradient update, and regularization."""
+
+        # --- Energy computation ---
+        energy_scores = self.energy_function(features, predictions.unsqueeze(-1))
+        masked_energy = energy_scores * attention_mask.float()
+
+        # --- Mean-based energy calculations ---
+        energy_per_race = masked_energy.sum(dim=1)
+        horses_per_race = attention_mask.sum(dim=1)
+        mean_energy_per_race = energy_per_race / horses_per_race
+
+        # --- Binary entropy calculations ---
+        entropy = -(predictions * torch.log(predictions + 1e-7) + (1 - predictions) * torch.log(1 - predictions + 1e-7))
+        masked_entropy = entropy * attention_mask.float()
+        entropy_per_race = masked_entropy.sum(dim=1)
+        mean_entropy_per_race = entropy_per_race / horses_per_race
+
+        # --- Calculate total energy with entropy ---
+        total_energy = mean_energy_per_race.mean() - self.config.entropy_beta * mean_entropy_per_race.mean()
+
+        # --- Gradient computation and update ---
+        energy_grad = torch.autograd.grad(total_energy, predictions, create_graph=True)[0]
+        energy_grad = energy_grad * attention_mask.float()
+
+        predictions = predictions - self.config.mcmc_step_size * energy_grad
+
+        # --- Langevin Dynamics: Add noise (EBT regularization) ---
+        if self.training and self.langevin_noise_std > 0:
+            # Only add noise during training (not eval) if configured
+            if not (self.config.no_langevin_during_eval and not self.training):
+                langevin_noise = torch.randn_like(predictions).detach() * self.langevin_noise_std
+                predictions = predictions + langevin_noise
+
+        predictions = (torch.tanh(predictions - 0.5) + 1) / 2 * (1 - 2e-7) + 1e-7
+        return predictions
+
     def forward(
         self,
         x: dict[str, torch.Tensor],
@@ -179,7 +216,7 @@ class SAINTTransformer(nn.Module):
         if num_mcmc_steps is None:
             num_mcmc_steps = self.config.mcmc_num_steps
 
-        # MCMC Step Randomization (EBT technique)
+        # --- MCMC Step Randomization (EBT technique) ---
         if self.training and self.config.randomize_mcmc_num_steps > 0:
             random_variation = torch.randint(0, self.config.randomize_mcmc_num_steps + 1, (1,)).item()
             num_mcmc_steps = max(self.config.randomize_mcmc_num_steps_min, num_mcmc_steps + random_variation)
@@ -212,37 +249,7 @@ class SAINTTransformer(nn.Module):
 
         predictions.requires_grad_(True)
         for mcmc_step in range(num_mcmc_steps):
-            energy_scores = self.energy_function(features, predictions.unsqueeze(-1))
-            masked_energy = energy_scores * attention_mask.float()
-
-            # total_energy = masked_energy.sum()  # Fixed a bug where bias is towards longer races
-            energy_per_race = masked_energy.sum(dim=1)
-            horses_per_race = attention_mask.sum(dim=1)
-            mean_energy_per_race = energy_per_race / horses_per_race
-
-            # --- Binary entropy calculations ---
-            entropy = -(predictions * torch.log(predictions + 1e-7) + (1 - predictions) * torch.log(1 - predictions + 1e-7))
-            masked_entropy = entropy * attention_mask.float()
-            entropy_per_race = masked_entropy.sum(dim=1)
-            mean_entropy_per_race = entropy_per_race / horses_per_race
-
-            # --- Calculate total energy with entropy ---
-            # total_energy = mean_energy_per_race.mean()
-            total_energy = mean_energy_per_race.mean() - self.config.entropy_beta * mean_entropy_per_race.mean()
-
-            energy_grad = torch.autograd.grad(total_energy, predictions, create_graph=True)[0]
-            energy_grad = energy_grad * attention_mask.float()
-
-            predictions = predictions - self.config.mcmc_step_size * energy_grad
-
-            # Langevin Dynamics: Add noise (EBT regularization)
-            if self.training and self.langevin_noise_std > 0:
-                # Only add noise during training (not eval) if configured
-                if not (self.config.no_langevin_during_eval and not self.training):
-                    langevin_noise = torch.randn_like(predictions).detach() * self.langevin_noise_std
-                    predictions = predictions + langevin_noise
-
-            predictions = (torch.tanh(predictions - 0.5) + 1) / 2 * (1 - 2e-7) + 1e-7
+            predictions = self._mcmc_step(features, predictions, attention_mask)
 
             if return_all_steps:
                 all_step_logits.append(predictions.unsqueeze(-1))
@@ -261,7 +268,6 @@ class SAINTTransformer(nn.Module):
         if return_all_steps:
             return torch.stack(all_step_logits, dim=0)
         else:
-            # return final_energy.unsqueeze(-1)
             return predictions.unsqueeze(-1)
 
     def compute_step(
