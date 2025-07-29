@@ -5,16 +5,16 @@ from typing import Literal
 @dataclass
 class SAINTConfig:
     # Notes
-    notes: str = "This is the original."
+    notes: str = ""
 
     # EBT hyperparams
-    mcmc_num_steps: int = 2
+    mcmc_num_steps: int = 3
     mcmc_step_size: float = 0.1
     entropy_beta: float = 0.01
 
     # Langevin hyperparams
     langevin_dynamics_noise: float = 0.1  # Noise std for Langevin dynamics
-    langevin_dynamics_noise_learnable: bool = False  # Make noise learnable
+    langevin_dynamics_noise_learnable: bool = True  # Make noise learnable
     no_langevin_during_eval: bool = True  # Disable noise during validation
 
     # Replay Buffer Parameters
