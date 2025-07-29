@@ -212,14 +212,21 @@ class SAINTTransformer(nn.Module):
         predictions.requires_grad_(True)
         for mcmc_step in range(num_mcmc_steps):
             energy_scores = self.energy_function(features, predictions.unsqueeze(-1))
-
             masked_energy = energy_scores * attention_mask.float()
 
             # total_energy = masked_energy.sum()  # Fixed a bug where bias is towards longer races
             energy_per_race = masked_energy.sum(dim=1)
             horses_per_race = attention_mask.sum(dim=1)
             mean_energy_per_race = energy_per_race / horses_per_race
-            total_energy = mean_energy_per_race.mean()
+
+            # --- Binary entropy calculations ---
+            entropy = -(predictions * torch.log(predictions + 1e-7) + (1 - predictions) * torch.log(1 - predictions + 1e-7))
+            masked_entropy = entropy * attention_mask.float()
+            entropy_per_race = masked_entropy.sum(dim=1)
+            mean_entropy_per_race = entropy_per_race / horses_per_race
+
+            # --- Calculate total energy with entropy ---
+            total_energy = mean_energy_per_race.mean() - self.config.entropy_beta * mean_entropy_per_race.mean()
 
             energy_grad = torch.autograd.grad(total_energy, predictions, create_graph=True)[0]
             energy_grad = energy_grad * attention_mask.float()
