@@ -241,6 +241,7 @@ class SAINTTransformer(nn.Module):
                     predictions = predictions + langevin_noise
 
             predictions = (torch.tanh(predictions - 0.5) + 1) / 2 * (1 - 2e-7) + 1e-7
+            predictions = torch.clamp(predictions, min=1e-7, max=1.0 - 1e-7)
 
             if return_all_steps:
                 all_step_logits.append(predictions.unsqueeze(-1))
