@@ -199,6 +199,7 @@ class SAINTTransformer(nn.Module):
 
         # --- Energy minimization with step tracking ---
         predictions = torch.randn(batch_size, horse_len, device=x.device) * 0.1
+        predictions = torch.clamp(predictions, min=1e-7, max=1.0 - 1e-7)
 
         # --- Replay Buffer: Replace some predictions with stored ones ---
         if self.training and self.replay_buffer is not None and len(self.replay_buffer) > 0:
@@ -220,14 +221,14 @@ class SAINTTransformer(nn.Module):
             mean_energy_per_race = energy_per_race / horses_per_race
 
             # --- Binary entropy calculations ---
-            # entropy = -(predictions * torch.log(predictions + 1e-7) + (1 - predictions) * torch.log(1 - predictions + 1e-7))
-            # masked_entropy = entropy * attention_mask.float()
-            # entropy_per_race = masked_entropy.sum(dim=1)
-            # mean_entropy_per_race = entropy_per_race / horses_per_race
+            entropy = -(predictions * torch.log(predictions + 1e-7) + (1 - predictions) * torch.log(1 - predictions + 1e-7))
+            masked_entropy = entropy * attention_mask.float()
+            entropy_per_race = masked_entropy.sum(dim=1)
+            mean_entropy_per_race = entropy_per_race / horses_per_race
 
             # --- Calculate total energy with entropy ---
-            # total_energy = mean_energy_per_race.mean() - self.config.entropy_beta * mean_entropy_per_race.mean()
-            total_energy = mean_energy_per_race.mean()
+            # total_energy = mean_energy_per_race.mean()
+            total_energy = mean_energy_per_race.mean() - self.config.entropy_beta * mean_entropy_per_race.mean()
 
             energy_grad = torch.autograd.grad(total_energy, predictions, create_graph=True)[0]
             energy_grad = energy_grad * attention_mask.float()
@@ -242,7 +243,6 @@ class SAINTTransformer(nn.Module):
                     predictions = predictions + langevin_noise
 
             predictions = (torch.tanh(predictions - 0.5) + 1) / 2 * (1 - 2e-7) + 1e-7
-            predictions = torch.clamp(predictions, min=1e-7, max=1.0 - 1e-7)
 
             if return_all_steps:
                 all_step_logits.append(predictions.unsqueeze(-1))
