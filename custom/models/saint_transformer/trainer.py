@@ -112,7 +112,7 @@ class ModelTrainer:
         status_text.append(
             f"Loaded, processed, and split data: {len(train_dataset)} train, {len(val_dataset)} val, {len(eval_dataset)} test samples."
         )
-        console.print(Panel(status_text, title="Data Preparation", border_style="cyan", padding=(1, 2)))
+        console.print(Panel(status_text, title="Data Preparation", border_style="cyan"))
 
         return train_dataloader, val_dataloader, eval_dataloader, preprocessed
 
@@ -302,7 +302,7 @@ class ModelTrainer:
 
         train_status_text = Text()
         train_status_text.append(f"CUDA Availability: {torch.cuda.is_available()}")
-        console.print(Panel(train_status_text, title="Starting Model Training", border_style="cyan", padding=(1, 2)))
+        console.print(Panel(train_status_text, title="Starting Model Training", border_style="cyan"))
 
         config = self.config
 
@@ -319,11 +319,9 @@ class ModelTrainer:
         # print(f"Scheduler: \033[36m{scheduler.__class__.__name__ if scheduler else None}\033[0m")
 
         finetune_status_text = Text()
-        finetune_status_text.append(f"Optimizer: {optimizer.__class__.__name__}")
+        finetune_status_text.append(f"Optimizer: {optimizer.__class__.__name__}\n")
         finetune_status_text.append(f"Scheduler: {scheduler.__class__.__name__ if scheduler else None}")
-        console.print(
-            Panel(finetune_status_text, title="Starting Finetune and Evaluation", border_style="cyan", padding=(1, 2))
-        )
+        console.print(Panel(finetune_status_text, title="Starting Finetune and Evaluation", border_style="cyan"))
 
         # --- Training loop ---
         for epoch in range(config.max_epochs + 1):
