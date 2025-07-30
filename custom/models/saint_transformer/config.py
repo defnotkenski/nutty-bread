@@ -8,7 +8,7 @@ class SAINTConfig:
     notes: str = ""
 
     # EBT hyperparams
-    mcmc_num_steps: int = 2
+    mcmc_num_steps: int = 3
     mcmc_step_size: float = 0.1
     entropy_beta: float = 0.01
 
