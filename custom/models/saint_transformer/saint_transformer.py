@@ -255,7 +255,7 @@ class SAINTTransformer(nn.Module):
             predictions = self._mcmc_step(features, predictions, attention_mask)
 
             if return_all_steps:
-                all_step_logits.append(torch.sigmoid(predictions).unsqueeze(-1))
+                all_step_logits.append(predictions.unsqueeze(-1))
 
         # --- Store predictions in replay buffer for future use ---
         if self.training and self.replay_buffer is not None:
@@ -268,48 +268,91 @@ class SAINTTransformer(nn.Module):
                 if mask.sum() > 1:
                     predictions[race_idx][mask] = f.softmax(predictions[race_idx][mask], dim=0)
 
+        # --- Apply per-race softmax for competitive classification ---
+        def apply_race_softmax(logits_tensor: Tensor, s_attention_mask: Tensor):
+            num_races, _ = logits_tensor.shape
+            race_probs = torch.zeros_like(logits_tensor)
+
+            for s_race_idx in range(num_races):
+                horse_mask = s_attention_mask[s_race_idx].bool()
+                if horse_mask.sum() > 1:  # If a race has more than one horse
+                    race_logits = logits_tensor[s_race_idx][horse_mask]
+                    race_softmax = f.softmax(race_logits, dim=0)
+                    race_probs[s_race_idx][horse_mask] = race_softmax
+                elif horse_mask.sum() == 1:  # Edge cases where a race would only have 1 horse
+                    race_probs[s_race_idx][horse_mask] = 1.0
+
+            return race_probs
+
         if return_all_steps:
-            return torch.stack(all_step_logits, dim=0)
+            # Apply softmax to each MCMC step
+            competitive_steps = []
+            for step_idx in range(len(all_step_logits)):
+                step_logits = all_step_logits[step_idx].squeeze(-1)
+                step_probs = apply_race_softmax(step_logits, attention_mask)
+                competitive_steps.append(step_probs.unsqueeze(-1))
+            return torch.stack(competitive_steps, dim=0)
         else:
-            return torch.sigmoid(predictions).unsqueeze(-1)
+            final_probs = apply_race_softmax(predictions, attention_mask)
+            return final_probs.unsqueeze(-1)
 
     def compute_step(
-        self, batch: tuple[dict[str, Tensor], Tensor, Tensor], apply_label_smoothing: bool
+        self, batch: tuple[dict[str, Tensor], Tensor, Tensor, Tensor], apply_label_smoothing: bool
     ) -> tuple[Tensor, Tensor, Tensor]:
-        x, y, attention_mask = batch
+        x, y, attention_mask, winner_indices = batch
 
         all_step_predictions = self(x, attention_mask, return_all_steps=True)
         num_steps, batch_size, horse_len, _ = all_step_predictions.shape
 
         total_loss = 0
-        final_probs = None
-        y_masked = None
+        final_probs_flat = None
+        y_flat = None
 
         # Compute loss for each MCMC step
         for step_idx in range(num_steps):
-            step_predictions = all_step_predictions[step_idx].squeeze(-1)
+            step_probs = all_step_predictions[step_idx].squeeze(-1)  # [batch_size, horse_len]
+            step_loss = 0
 
-            valid_mask = attention_mask.bool()
-            step_pred_masked = step_predictions[valid_mask]
-            y_step_masked = y[valid_mask]
+            # Process each race seperately for cross-entropy
+            for race_idx in range(batch_size):
+                horse_mask = attention_mask[race_idx].bool()
+                num_horses = horse_mask.sum().int()
 
-            if self.config.label_smoothing and apply_label_smoothing:
-                # Decreasing label smoothing: stronger at first step, weaker at final step
-                smoothing_factor = 0.1 * (num_steps - step_idx) / num_steps
-                y_step_masked = y_step_masked * (1 - smoothing_factor) + (1 - y_step_masked) * smoothing_factor
+                # Skip races with < 2 horses
+                if num_horses < 2:
+                    continue
 
-            # Compute step loss
-            # step_loss = f.binary_cross_entropy_with_logits(step_pred_masked, y_step_masked, pos_weight=self.pos_weight)
-            weights = self.pos_weight * y_step_masked + (1 - y_step_masked)
-            step_loss = f.binary_cross_entropy(step_pred_masked, y_step_masked, weight=weights, reduction="mean")
+                # Get race probabilities (already softmaxed from forward)
+                race_probs = step_probs[race_idx][horse_mask]
+
+                # Create one-hot target from winner index
+                race_target = torch.zeros(num_horses, device=step_probs.device)
+                race_target[winner_indices[race_idx]] = 1.0
+
+                if self.config.label_smoothing and apply_label_smoothing:
+                    # Decreasing label smoothing: stronger at first step, weaker at final step
+                    smoothing_factor = 0.1 * (num_steps - step_idx) / num_steps
+                    race_target = race_target * (1 - smoothing_factor) + smoothing_factor / num_horses
+
+                # Compute cross-entropy loss for this race
+                # Use log probabilities to avoid numerical issues
+                log_probs = torch.log(race_probs + 1e-8)
+                race_loss = -torch.sum(race_target * log_probs)
+                step_loss += race_loss
+
+            # Average loss over races in batch
+            step_loss = step_loss / batch_size if batch_size > 0 else step_loss
             total_loss += step_loss
 
+            # Store final step results for metrics
             if step_idx == num_steps - 1:
-                final_probs = step_pred_masked
-                y_masked = y_step_masked
+                # Flatten valid predictions and targets for metrics
+                valid_mask = attention_mask.bool()
+                final_probs_flat = step_probs[valid_mask]
+                y_flat = y[valid_mask]
 
         avg_loss = total_loss / num_steps
-        return avg_loss, final_probs, y_masked
+        return avg_loss, final_probs_flat, y_flat
 
     def to(self, device: torch.device):
         # Move all standard PyTorch stuff

@@ -109,6 +109,16 @@ class ModelTrainer:
 
         return train_dataloader, val_dataloader, eval_dataloader, preprocessed
 
+    def _move_batch_to_device(self, batch):
+        x, y, attention_mask, winner_indices = batch
+
+        x = {k: v.to(self.device) for k, v in x.items()}
+        y = y.to(self.device)
+        attention_mask = attention_mask.to(self.device)
+        winner_indices = winner_indices.to(self.device)
+
+        return x, y, attention_mask, winner_indices
+
     def _prepare_optimizer(
         self, model: SAINTTransformer, train_dataloader: DataLoader
     ) -> tuple[Optimizer | ProdigyPlusScheduleFree, LRScheduler | None]:
@@ -203,15 +213,16 @@ class ModelTrainer:
                 print(f"Gracefully stopped at epoch {epoch}")
                 break
 
-            x, y, attention_mask = batch
-
             # --- Move to device ---
-            x = {k: v.to(self.device) for k, v in x.items()}
-            y, attention_mask = y.to(self.device), attention_mask.to(self.device)
+            # x, y, attention_mask, winner_indices = batch
+            # x = {k: v.to(self.device) for k, v in x.items()}
+            # y, attention_mask = y.to(self.device), attention_mask.to(self.device)
+            # winner_indices = winner_indices.to(self.device)
+            x, y, attention_mask, winner_indices = self._move_batch_to_device(batch)
 
             # --- Forward pass ---
             optimizer.zero_grad()
-            loss, probs, y_masked = model.compute_step((x, y, attention_mask), True)
+            loss, probs, y_masked = model.compute_step((x, y, attention_mask, winner_indices), True)
 
             # --- Training metric to log ---
             if mclogger.should_log():
@@ -244,26 +255,58 @@ class ModelTrainer:
         all_probs = []
         all_targets = []
 
-        for batch in dataloader:
-            x, y, attention_mask = batch
-            x = {k: v.to(self.device) for k, v in x.items()}
-            y, attention_mask = y.to(self.device), attention_mask.to(self.device)
+        # Collect race-level data
+        race_predictions = []
+        race_actual = []
 
-            loss, probs, y_masked = model.compute_step((x, y, attention_mask), False)
+        for batch in dataloader:
+            # --- Move to device ---
+            # x, y, attention_mask, winner_indices = batch
+            # x = {k: v.to(self.device) for k, v in x.items()}
+            # y, attention_mask = y.to(self.device), attention_mask.to(self.device)
+            # winner_indices = winner_indices.to(self.device)
+            x, y, attention_mask, winner_indices = self._move_batch_to_device(batch)
+
+            loss, probs, y_masked = model.compute_step((x, y, attention_mask, winner_indices), False)
 
             all_losses.append(loss.item())
             all_probs.append(probs.detach().cpu())
             all_targets.append(y_masked.detach().cpu())
+
+            # Collect race-level predictions
+            batch_size = attention_mask.shape[0]
+            prob_idx = 0
+
+            for race_idx in range(batch_size):
+                mask = attention_mask[race_idx].bool()
+                num_horses = mask.sum().int()
+
+                if num_horses > 1:
+                    race_probs = probs[prob_idx : prob_idx + num_horses]
+                    predicted_winner = race_probs.argmax().item()
+                    race_predictions.append(predicted_winner)
+                else:
+                    race_predictions.append(0)
+
+                prob_idx += num_horses
+
+            race_actual.extend(winner_indices.cpu().tolist())
 
         # --- Calculate metrics ---
         avg_loss = sum(all_losses) / len(all_losses)
         all_probs = torch.cat(all_probs)
         all_targets = torch.cat(all_targets)
 
+        if len(race_predictions) > 0:
+            correct_races = sum(1 for pred, actual in zip(race_predictions, race_actual) if pred == actual)
+            race_accuracy = correct_races / len(race_predictions)
+        else:
+            race_accuracy = 0.0
+
         accuracy = accuracy_score(all_targets, (all_probs > 0.5).float())
         auroc = roc_auc_score(all_targets, all_probs)
 
-        return avg_loss, accuracy, auroc
+        return avg_loss, accuracy, auroc, race_accuracy
 
     def train_model(self, path_to_csv: Path, perform_eval: bool) -> None:
         print("\n--- Starting model training ---")
@@ -299,7 +342,9 @@ class ModelTrainer:
             if config.optimizer == "prodigy-plus":
                 optimizer.eval()
 
-            epoch_avg_loss, epoch_accuracy, epoch_auroc = self._validate_model(model, dataloader=val_dataloader)
+            epoch_avg_loss, epoch_accuracy, epoch_auroc, epoch_race_accuracy = self._validate_model(
+                model, dataloader=val_dataloader
+            )
 
             # --- Log validation metrics ---
             self.mclogger.set_context("val")
@@ -307,6 +352,7 @@ class ModelTrainer:
             self.mclogger.log("loss", epoch_avg_loss)
             self.mclogger.log("accuracy", epoch_accuracy)
             self.mclogger.log("auroc", epoch_auroc)
+            self.mclogger.log("race_accuracy", epoch_race_accuracy)
 
             # Also log the epoch
             self.mclogger.set_context("meta")
@@ -315,7 +361,7 @@ class ModelTrainer:
             # Log validation metrics to the console too
             status = "Initial" if epoch == 0 else f"Epoch: {epoch}"
             print(
-                f"{status} Validation | Accuracy: {epoch_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}, ROC: {epoch_auroc:.4f}\n"
+                f"{status} Validation | Accuracy: {epoch_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}, ROC: {epoch_auroc:.4f}, Race Acc:{epoch_race_accuracy:.4f}\n"
             )
 
         # --- Perform evaluations after model training ---
@@ -323,8 +369,12 @@ class ModelTrainer:
 
         if perform_eval and not self.should_stop:
             print("--- Final Evaluation on Test Set ---")
-            test_avg_loss, test_accuracy, test_auroc = self._validate_model(model, dataloader=eval_dataloader)
-            print(f"Evaluation | Accuracy: {test_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}, ROC: {test_auroc:.4f}\n")
+            test_avg_loss, test_accuracy, test_auroc, test_race_accuracy = self._validate_model(
+                model, dataloader=eval_dataloader
+            )
+            print(
+                f"Evaluation | Accuracy: {test_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}, ROC: {test_auroc:.4f}, Race Acc: {test_race_accuracy:.4f}\n"
+            )
 
         # If it reaches this point, thank fuckin god
         print("🪿 --- Training finished --- 🪿")

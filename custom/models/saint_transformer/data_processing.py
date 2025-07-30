@@ -2,7 +2,6 @@ import numpy as np
 import polars as pl
 from pathlib import Path
 import torch
-from torch import Tensor
 from sklearn.preprocessing import LabelEncoder
 from dataclasses import dataclass
 from torch.utils.data import Dataset
@@ -11,14 +10,18 @@ from datasets.schemas.sample_horses_schema import COLUMN_TYPES
 from custom.commons.utils import cleanup_dataframe
 from custom.commons.feature_extractor import FeatureProcessor
 
+# Import typings
+from torch import Tensor
+
 
 @dataclass
 class PreProcessor:
-    continuous_tensor: torch.Tensor
-    categorical_tensor: torch.Tensor
-    target_tensor: torch.Tensor
+    continuous_tensor: Tensor
+    categorical_tensor: Tensor
+    target_tensor: Tensor
     categorical_cardinalities: list
     race_boundaries: list
+    winner_indices: Tensor
 
 
 def preprocess_df(df_path: Path, return_feature_config: bool = False):
@@ -74,6 +77,16 @@ def preprocess_df(df_path: Path, return_feature_config: bool = False):
     # Extract target col
     target_tensor = torch.tensor(base_df["target"].to_numpy(), dtype=torch.float32)
 
+    # Compute winner indices per race
+    winner_indices = []
+    for _, group_df in race_groups:
+        # Find the horse with target=1 (the winner)
+        group_targets = group_df["target"].to_numpy()
+        winner_idx = np.argmax(group_targets)
+        winner_indices.append(winner_idx)
+
+    winner_indices_tensor = torch.tensor(winner_indices, dtype=torch.long)
+
     # Drop target col
     base_df = base_df.drop("target")
 
@@ -111,19 +124,21 @@ def preprocess_df(df_path: Path, return_feature_config: bool = False):
         target_tensor=target_tensor,
         categorical_cardinalities=cat_cardinalities,
         race_boundaries=race_boundaries,
+        winner_indices=winner_indices_tensor,
     )
 
 
-def collate_races(batch) -> tuple[dict[str:Tensor], Tensor, Tensor]:
+def collate_races(batch) -> tuple[dict[str:Tensor], Tensor, Tensor, Tensor]:
     """
     Collate function to pad races to same length and create attention masks.
     Args:
-        List of tuples (input_dict, targets) from SAINTDataset
+        List of tuples (input_dict, targets, winner_idx) from SAINTDataset
     """
 
     # Separate inputs and targets
     inputs = [item[0] for item in batch]  # List of dicts
     targets = [item[1] for item in batch]  # list of target tensors
+    winner_indices = [item[2] for item in batch]  # List of winner indices
 
     # Find max number of horses in this batch
     max_horses = max(inp["continuous"].shape[0] for inp in inputs)
@@ -154,7 +169,9 @@ def collate_races(batch) -> tuple[dict[str:Tensor], Tensor, Tensor]:
         "categorical": padded_categorical,
     }
 
-    return batched_input, padded_targets, attention_mask
+    winner_indices_tensor = torch.tensor(winner_indices, dtype=torch.long)
+
+    return batched_input, padded_targets, attention_mask, winner_indices_tensor
 
 
 class SAINTDataset(Dataset):
@@ -162,6 +179,7 @@ class SAINTDataset(Dataset):
         self.continuous = preprocessed_data.continuous_tensor
         self.categorical = preprocessed_data.categorical_tensor
         self.target = preprocessed_data.target_tensor
+        self.winner_indices = preprocessed_data.winner_indices
 
         self.race_boundaries = preprocessed_data.race_boundaries
 
@@ -171,9 +189,11 @@ class SAINTDataset(Dataset):
     def __getitem__(self, item_idx):
         start_idx, end_idx = self.race_boundaries[item_idx]
 
-        return {
-            "continuous": self.continuous[start_idx:end_idx],  # (num_horses, features)
-            "categorical": self.categorical[start_idx:end_idx],  # (num_horses, features)
-        }, self.target[
-            start_idx:end_idx
-        ]  # (num_horses,)
+        return (
+            {
+                "continuous": self.continuous[start_idx:end_idx],  # (num_horses, features)
+                "categorical": self.categorical[start_idx:end_idx],  # (num_horses, features)
+            },
+            self.target[start_idx:end_idx],
+            self.winner_indices[item_idx],
+        )
