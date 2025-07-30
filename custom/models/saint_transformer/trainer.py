@@ -295,7 +295,7 @@ class ModelTrainer:
 
         return avg_loss, race_accuracy
 
-    def train_model(self, path_to_csv: Path, _perform_eval: bool) -> None:
+    def train_model(self, path_to_csv: Path) -> None:
         # print("\n--- Starting model training ---")
         # print(f"CUDA Availability: {torch.cuda.is_available()}")
         # print("------\n")

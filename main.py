@@ -44,7 +44,7 @@ def run_with_modal() -> None:
     config_modal = SAINTConfig()
     trainer_modal = ModelTrainer(config_modal)
 
-    trainer_modal.train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True)
+    trainer_modal.train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH)
 
     return
 
@@ -59,4 +59,4 @@ if __name__ == "__main__":
     config = SAINTConfig()
     trainer = ModelTrainer(config)
 
-    trainer.train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH, perform_eval=True)
+    trainer.train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH)
