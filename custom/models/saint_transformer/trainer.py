@@ -12,10 +12,16 @@ from custom.commons.logger import McLogger
 from torch.optim.lr_scheduler import OneCycleLR
 import signal
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+
 # Type Imports
 from custom.models.saint_transformer.saint_transformer import SAINTTransformer
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
+
+console = Console()
 
 
 def calc_pos_weight(preprocessed):
@@ -47,7 +53,7 @@ class ModelTrainer:
         self.should_stop = True
 
     def _prepare_data(self, path_to_csv: Path):
-        print("--- Data Preparation ---")
+        # print("--- Data Preparation ---")
 
         config = self.config
         preprocessed = preprocess_df(df_path=path_to_csv)
@@ -97,10 +103,16 @@ class ModelTrainer:
             collate_fn=collate_races,
         )
 
-        print(
+        # print(
+        #     f"Loaded, processed, and split data: {len(train_dataset)} train, {len(val_dataset)} val, {len(eval_dataset)} test samples."
+        # )
+        # print(f"------\n")
+
+        status_text = Text()
+        status_text.append(
             f"Loaded, processed, and split data: {len(train_dataset)} train, {len(val_dataset)} val, {len(eval_dataset)} test samples."
         )
-        print(f"------\n")
+        console.print(Panel(status_text, title="Data Preparation", border_style="cyan", padding=(1, 2)))
 
         return train_dataloader, val_dataloader, eval_dataloader, preprocessed
 
@@ -158,8 +170,6 @@ class ModelTrainer:
                 use_focus=config.prodigy_use_focus,
             )
 
-        # self.optimizer = optimizer
-        # self.scheduler = scheduler
         return optimizer, scheduler
 
     def _setup_model(self, preprocessed: PreProcessor) -> SAINTTransformer:
@@ -286,9 +296,13 @@ class ModelTrainer:
         return avg_loss, race_accuracy
 
     def train_model(self, path_to_csv: Path, _perform_eval: bool) -> None:
-        print("\n--- Starting model training ---")
-        print(f"CUDA Availability: {torch.cuda.is_available()}")
-        print("------\n")
+        # print("\n--- Starting model training ---")
+        # print(f"CUDA Availability: {torch.cuda.is_available()}")
+        # print("------\n")
+
+        train_status_text = Text()
+        train_status_text.append(f"CUDA Availability: {torch.cuda.is_available()}")
+        console.print(Panel(train_status_text, title="Starting Model Training", border_style="cyan", padding=(1, 2)))
 
         config = self.config
 
@@ -300,9 +314,16 @@ class ModelTrainer:
         optimizer, scheduler = self._prepare_optimizer(model, train_dataloader)
 
         # --- Finetuning and Evaluation Loop ---
-        print("--- Starting Finetuning & Evaluation ---")
-        print(f"Optimizer: \033[36m{optimizer.__class__.__name__}\033[0m")
-        print(f"Scheduler: \033[36m{scheduler.__class__.__name__ if scheduler else None}\033[0m")
+        # print("--- Starting Finetuning & Evaluation ---")
+        # print(f"Optimizer: \033[36m{optimizer.__class__.__name__}\033[0m")
+        # print(f"Scheduler: \033[36m{scheduler.__class__.__name__ if scheduler else None}\033[0m")
+
+        finetune_status_text = Text()
+        finetune_status_text.append(f"Optimizer: {optimizer.__class__.__name__}")
+        finetune_status_text.append(f"Scheduler: {scheduler.__class__.__name__ if scheduler else None}")
+        console.print(
+            Panel(finetune_status_text, title="Starting Finetune and Evaluation", border_style="cyan", padding=(1, 2))
+        )
 
         # --- Training loop ---
         for epoch in range(config.max_epochs + 1):
