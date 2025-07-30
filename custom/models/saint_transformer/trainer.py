@@ -285,7 +285,7 @@ class ModelTrainer:
 
         return avg_loss, race_accuracy
 
-    def train_model(self, path_to_csv: Path, perform_eval: bool) -> None:
+    def train_model(self, path_to_csv: Path, _perform_eval: bool) -> None:
         print("\n--- Starting model training ---")
         print(f"CUDA Availability: {torch.cuda.is_available()}")
         print("------\n")
@@ -315,34 +315,41 @@ class ModelTrainer:
                 print(f"Gracefully stopped at epoch {epoch}")
                 break
 
-            # --- Validation loop ---
+            # --- Set optimizer mode to eval to run metrics calculations ---
             if config.optimizer == "prodigy-plus":
                 optimizer.eval()
 
+            status = "Initial" if epoch == 0 else f"Epoch: {epoch}"
+
+            # --- Validation Block ---
             epoch_avg_loss, epoch_race_accuracy = self._validate_model(model, dataloader=val_dataloader)
 
             # --- Log validation metrics ---
             self.mclogger.set_context("val")
-
             self.mclogger.log("loss", epoch_avg_loss)
             self.mclogger.log("race_accuracy", epoch_race_accuracy)
 
-            # Also log the epoch
+            # --- Log validation metrics to the console too ---
+            print(f"{status} Validation | Race Accuracy: {epoch_race_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}\n")
+
+            # --- Evaluation Block ---
+            eval_avg_loss, eval_race_accuracy = self._validate_model(model, dataloader=eval_dataloader)
+
+            # --- Log Evaluation Metrics ---
+            self.mclogger.set_context("eval")
+            self.mclogger.log("loss", eval_avg_loss)
+            self.mclogger.log("race_accuracy", eval_race_accuracy)
+
+            # --- Log evaluation metrics to the console too ---
+            print(f"{status} Evaluation | Race Accuracy: {eval_race_accuracy:.4f}, Avg. Loss: {eval_avg_loss:.4f}\n")
+
+            # --- Also log the epoch ---
             self.mclogger.set_context("meta")
             self.mclogger.log("epoch", epoch)
-
-            # Log validation metrics to the console too
-            status = "Initial" if epoch == 0 else f"Epoch: {epoch}"
-            print(f"{status} Validation | Race Accuracy: {epoch_race_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}\n")
 
         # --- Perform evaluations after model training ---
         self.mclogger.stop()
 
-        if perform_eval and not self.should_stop:
-            print("--- Final Evaluation on Test Set ---")
-            test_avg_loss, test_race_accuracy = self._validate_model(model, dataloader=eval_dataloader)
-            print(f"Evaluation | Race Accuracy: {test_race_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}\n")
-
-        # If it reaches this point, thank fuckin god
+        # --- If it reaches this point, thank fuckin god ---
         print("🪿 --- Training finished --- 🪿")
         return
