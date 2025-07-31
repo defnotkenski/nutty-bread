@@ -12,7 +12,8 @@ dependencies = [
     "pyarrow",
     "requests",
     "prodigy-plus-schedule-free",
-    "triton; sys_platform == 'linux'"
+    "triton; sys_platform == 'linux'",
+    "schedulefree>=1.4.1",
 ]
 
 [tool.uv.sources]

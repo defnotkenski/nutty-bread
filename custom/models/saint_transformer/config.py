@@ -62,7 +62,7 @@ class SAINTConfig:
     shuffle: bool = False
 
     # Optimizer hyperparams
-    optimizer: Literal["prodigy-plus", "adamw"] = "adamw"
+    optimizer: Literal["prodigy-plus", "adamw", "adamw-schedule-free"] = "adamw-schedule-free"
     prodigy_use_speed: bool = True
     prodigy_use_orthograd: bool = False
     prodigy_use_focus: bool = False

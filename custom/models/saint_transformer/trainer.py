@@ -10,6 +10,7 @@ from tqdm import tqdm
 from prodigyplus import ProdigyPlusScheduleFree
 from custom.commons.logger import McLogger
 from torch.optim.lr_scheduler import OneCycleLR
+from schedulefree import AdamWScheduleFree
 import signal
 
 from rich.console import Console
@@ -20,8 +21,10 @@ from custom.models.saint_transformer.saint_transformer import SAINTTransformer
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 
-custom_theme = Theme({"info_title": "wheat1", "info_text": "bold grey89"})
+custom_theme = Theme({"info_title": "khaki1", "info_text": "bold grey85"})
 console = Console(theme=custom_theme)
+
+SCHEDULE_FREE_OPTIMIZERS = ["prodigy-plus", "adamw-schedule-free"]
 
 
 def calc_pos_weight(preprocessed):
@@ -149,6 +152,9 @@ class ModelTrainer:
                     final_div_factor=1 / config.min_lr_ratio,
                 )
 
+        elif config.optimizer == "adamw-schedule-free":
+            optimizer = AdamWScheduleFree(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
+
         elif config.optimizer == "prodigy-plus":
             print(f"--- Optimizer info ---")
             print(f"Detected {config.optimizer} optimizer. Setting appropriate hyperparams based on config.")
@@ -200,16 +206,11 @@ class ModelTrainer:
     ) -> None:
         """Train for one epoch"""
         config = self.config
-        mclogger = self.mclogger
 
+        # --- Skip training on epoch 0 ---
         if epoch == 0:
-            return  # Skip training on epoch 0
+            return
 
-        model.train()
-        if config.optimizer == "prodigy-plus":
-            optimizer.train()
-
-        mclogger.set_context("train")
         p_bar = tqdm(train_dataloader, desc=f"Training Epoch {epoch}")
 
         for batch in p_bar:
@@ -225,12 +226,12 @@ class ModelTrainer:
             loss, probs, y_masked = model.compute_step((x, y, attention_mask, winner_indices), True)
 
             # --- Training metrics to log ---
-            if mclogger.should_log():
+            if self.mclogger.should_log():
                 avg_winner_confidence = torch.exp(-loss).item()
-                mclogger.log("winner_conf", avg_winner_confidence)
+                self.mclogger.log("winner_conf", avg_winner_confidence)
 
-            mclogger.log("loss", loss.item())
-            mclogger.step()
+            self.mclogger.log("loss", loss.item())
+            self.mclogger.step()
 
             # --- Backward pass and step forward with optimizer or scheduler ---
             loss.backward()
@@ -243,17 +244,15 @@ class ModelTrainer:
 
             # --- Scheduler step after batch completion ---
             if scheduler:
-                mclogger.log("lr", scheduler.get_last_lr()[0])
+                self.mclogger.log("lr", scheduler.get_last_lr()[0])
                 scheduler.step()
 
             p_bar.set_postfix(loss=f"{loss.item():.4f}")
 
     def _validate_model(self, model: SAINTTransformer, dataloader: DataLoader):
-        model.eval()
-
         all_losses = []
 
-        # Collect race-level data
+        # --- Collect race-level data ---
         race_predictions = []
         race_actual = []
 
@@ -264,7 +263,7 @@ class ModelTrainer:
             loss, probs, y_masked = model.compute_step((x, y, attention_mask, winner_indices), False)
             all_losses.append(loss.item())
 
-            # Collect race-level predictions
+            # --- Collect race-level predictions ---
             batch_size = attention_mask.shape[0]
             prob_idx = 0
 
@@ -324,7 +323,14 @@ class ModelTrainer:
 
         # --- Training loop ---
         for epoch in range(config.max_epochs + 1):
-            # --- Train epoch ---
+            # --- Set model, optimizer, and logger to train mode ---
+            self.mclogger.set_context("train")
+
+            model.train()
+            if config.optimizer in SCHEDULE_FREE_OPTIMIZERS:
+                optimizer.train()
+
+            # --- Train the current epoch iteration ---
             self._train_epoch(
                 model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, train_dataloader=train_dataloader
             )
@@ -333,8 +339,9 @@ class ModelTrainer:
                 print(f"Gracefully stopped at epoch {epoch}")
                 break
 
-            # --- Set optimizer mode to eval to run metrics calculations ---
-            if config.optimizer == "prodigy-plus":
+            # --- Set model and optimizer mode to eval mode ---
+            model.eval()
+            if config.optimizer in SCHEDULE_FREE_OPTIMIZERS:
                 optimizer.eval()
 
             status = "Initial" if epoch == 0 else f"Epoch: {epoch}"
@@ -348,7 +355,7 @@ class ModelTrainer:
             self.mclogger.log("race_accuracy", epoch_race_accuracy)
 
             # --- Log validation metrics to the console too ---
-            print(f"{status} Validation | Race Accuracy: {epoch_race_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}\n")
+            print(f"{status} Validation | Race Accuracy: {epoch_race_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}")
 
             # --- Evaluation Block ---
             eval_avg_loss, eval_race_accuracy = self._validate_model(model, dataloader=eval_dataloader)
