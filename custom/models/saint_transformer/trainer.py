@@ -11,11 +11,10 @@ from custom.commons.logger import McLogger
 from torch.optim.lr_scheduler import OneCycleLR
 from schedulefree import AdamWScheduleFree
 import signal
-from tqdm import tqdm  # noqa
+from tqdm.rich import tqdm
 
 from rich.console import Console
 from rich.theme import Theme
-from rich.progress import Progress, TextColumn, TaskProgressColumn, TimeElapsedColumn, BarColumn
 
 # Type Imports
 from custom.models.saint_transformer.saint_transformer import SAINTTransformer
@@ -225,53 +224,42 @@ class ModelTrainer:
         if epoch == 0:
             return
 
-        # p_bar = tqdm(train_dataloader, desc=f"Training Epoch {epoch}")
-        with Progress(
-            TextColumn("{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TextColumn("Loss: {task.fields[loss]:.4f}"),
-            TimeElapsedColumn(),
-            console=console,
-        ) as progress:
-            task = progress.add_task(f"Training Epoch {epoch}", total=len(train_dataloader), loss=0.0)
+        p_bar = tqdm(train_dataloader, desc=f"Training Epoch {epoch}")
+        for batch in p_bar:
+            if self.should_stop:
+                print(f"Gracefully stopped at epoch {epoch}")
+                break
 
-            for batch in train_dataloader:
-                if self.should_stop:
-                    print(f"Gracefully stopped at epoch {epoch}")
-                    break
+            # --- Move to device ---
+            x, y, attention_mask, winner_indices = self._move_batch_to_device(batch)
 
-                # --- Move to device ---
-                x, y, attention_mask, winner_indices = self._move_batch_to_device(batch)
+            # --- Forward pass ---
+            optimizer.zero_grad()
+            loss, probs, y_masked = model.compute_step((x, y, attention_mask, winner_indices), True)
 
-                # --- Forward pass ---
-                optimizer.zero_grad()
-                loss, probs, y_masked = model.compute_step((x, y, attention_mask, winner_indices), True)
+            # --- Training metrics to log ---
+            if self.mclogger.should_log():
+                avg_winner_confidence = torch.exp(-loss).item()
+                self.mclogger.log("winner_conf", avg_winner_confidence)
 
-                # --- Training metrics to log ---
-                if self.mclogger.should_log():
-                    avg_winner_confidence = torch.exp(-loss).item()
-                    self.mclogger.log("winner_conf", avg_winner_confidence)
+            self.mclogger.log("loss", loss.item())
+            self.mclogger.step()
 
-                self.mclogger.log("loss", loss.item())
-                self.mclogger.step()
+            # --- Backward pass and step forward with optimizer or scheduler ---
+            loss.backward()
 
-                # --- Backward pass and step forward with optimizer or scheduler ---
-                loss.backward()
+            # --- Implement gradient clipping ---
+            if config.gradient_clip_val is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradient_clip_val)
 
-                # --- Implement gradient clipping ---
-                if config.gradient_clip_val is not None:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradient_clip_val)
+            optimizer.step()
 
-                optimizer.step()
+            # --- Scheduler step after batch completion ---
+            if scheduler:
+                self.mclogger.log("lr", scheduler.get_last_lr()[0])
+                scheduler.step()
 
-                # --- Scheduler step after batch completion ---
-                if scheduler:
-                    self.mclogger.log("lr", scheduler.get_last_lr()[0])
-                    scheduler.step()
-
-                # p_bar.set_postfix(loss=f"{loss.item():.4f}")
-                progress.update(task, advance=1, loss=loss.item())
+            p_bar.set_postfix(loss=f"{loss.item():.4f}")
 
     def _validate_model(self, model: SAINTTransformer, dataloader: DataLoader):
         all_losses = []
