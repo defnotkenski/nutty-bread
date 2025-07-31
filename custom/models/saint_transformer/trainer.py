@@ -307,10 +307,6 @@ class ModelTrainer:
         return avg_loss, race_accuracy
 
     def train_model(self, path_to_csv: Path) -> None:
-        # print("\n--- Starting model training ---")
-        # print(f"CUDA Availability: {torch.cuda.is_available()}")
-        # print("------\n")
-
         console.print(f"\n--- Starting Model Training ---", style="info_title")
         console.print(f"CUDA Availability: {torch.cuda.is_available()}", style="info_text")
         console.print(f"------\n", style="info_title")
@@ -325,14 +321,9 @@ class ModelTrainer:
         optimizer, scheduler = self._prepare_optimizer(model, train_dataloader)
 
         # --- Finetuning and Evaluation Loop ---
-        # print("--- Starting Finetuning & Evaluation ---")
-        # print(f"Optimizer: \033[36m{optimizer.__class__.__name__}\033[0m")
-        # print(f"Scheduler: \033[36m{scheduler.__class__.__name__ if scheduler else None}\033[0m")
-
         console.print(f"--- Starting Finetuning & Evaluation ---", style="info_title")
         console.print(f"Optimizer: {optimizer.__class__.__name__}", style="info_text")
         console.print(f"Scheduler: {scheduler.__class__.__name__ if scheduler else None}", style="info_text")
-        console.print("------\n", style="info_title")
 
         # --- Training loop ---
         for epoch in range(config.max_epochs + 1):
