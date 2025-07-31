@@ -52,25 +52,30 @@ class ModelTrainer:
         signal.signal(signal.SIGTERM, self._signal_handler)
 
     def _signal_handler(self, _signum, _frame):
-        print("Received graceful shutdown signal...")
+        console.print("Received graceful shutdown signal...", style="bold magenta italic")
         self.should_stop = True
 
     def _prepare_data(self, path_to_csv: Path):
+        """
+        Prepare the different datasets to be used throughout training, validation, and evaluation.
+        NOTE: There are four different sets: train, val, eval, and test (test set is a combination of val and eval).
+        """
         config = self.config
         preprocessed = preprocess_df(df_path=path_to_csv)
         dataset = SAINTDataset(preprocessed)
 
-        train_idx, temp_idx = train_test_split(
+        train_idx, test_idx = train_test_split(
             range(len(dataset)), test_size=0.1, shuffle=config.shuffle, random_state=config.random_state
         )
         validate_idx, eval_idx = train_test_split(
-            temp_idx, test_size=0.5, shuffle=config.shuffle, random_state=config.random_state
+            test_idx, test_size=0.5, shuffle=config.shuffle, random_state=config.random_state
         )
 
         # Create subset datasets
         train_dataset = torch.utils.data.Subset(dataset, train_idx)
         val_dataset = torch.utils.data.Subset(dataset, validate_idx)
         eval_dataset = torch.utils.data.Subset(dataset, eval_idx)
+        test_dataset = torch.utils.data.Subset(dataset, test_idx)
 
         # Create dataloaders
         batch_size = config.batch_size
@@ -103,6 +108,14 @@ class ModelTrainer:
             pin_memory=pin_memory,
             collate_fn=collate_races,
         )
+        test_dataloader = DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            collate_fn=collate_races,
+        )
 
         # print(
         #     f"Loaded, processed, and split data: {len(train_dataset)} train, {len(val_dataset)} val, {len(eval_dataset)} test samples."
@@ -116,7 +129,7 @@ class ModelTrainer:
         )
         console.print(f"------\n", style="info_title")
 
-        return train_dataloader, val_dataloader, eval_dataloader, preprocessed
+        return train_dataloader, val_dataloader, eval_dataloader, test_dataloader, preprocessed
 
     def _move_batch_to_device(self, batch):
         x, y, attention_mask, winner_indices = batch
@@ -305,7 +318,7 @@ class ModelTrainer:
         config = self.config
 
         # --- Prepare data ---
-        train_dataloader, val_dataloader, eval_dataloader, preprocessed = self._prepare_data(path_to_csv)
+        train_dataloader, val_dataloader, eval_dataloader, test_dataloader, preprocessed = self._prepare_data(path_to_csv)
 
         # --- Prepare model and optimizer ---
         model = self._setup_model(preprocessed)
@@ -367,6 +380,17 @@ class ModelTrainer:
 
             # --- Log evaluation metrics to the console too ---
             print(f"{status} Evaluation | Race Accuracy: {eval_race_accuracy:.4f}, Avg. Loss: {eval_avg_loss:.4f}\n")
+
+            # --- Test Block ---
+            test_avg_loss, test_race_accuracy = self._validate_model(model, dataloader=test_dataloader)
+
+            # --- Log test metrics ---
+            self.mclogger.set_context("test")
+            self.mclogger.log("loss", test_avg_loss)
+            self.mclogger.log("race_accuracy", test_race_accuracy)
+
+            # --- Log test metrics to the console too ---
+            print(f"{status} Test | Race Accuracy: {test_race_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}\n")
 
             # --- Also log the epoch ---
             self.mclogger.set_context("meta")

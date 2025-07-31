@@ -16,9 +16,9 @@ class McLogger:
         self.neptune_run: neptune.Run = neptune_run
         self.config: SAINTConfig = config
         self.global_step: int = 0
-        self._context: Literal["train", "val", "eval", "meta"] = "train"
+        self._context: Literal["train", "val", "eval", "test", "meta"] = "train"
 
-    def set_context(self, context: Literal["train", "val", "eval", "meta"]):
+    def set_context(self, context: Literal["train", "val", "eval", "test", "meta"]):
         self._context = context
 
     def log(self, name, value):
@@ -30,6 +30,9 @@ class McLogger:
             self._write_log(f"{self._context}/{name}", value)
 
         elif self._context == "eval":
+            self._write_log(f"{self._context}/{name}", value)
+
+        elif self._context == "test":
             self._write_log(f"{self._context}/{name}", value)
 
         elif self._context == "meta":
