@@ -124,7 +124,7 @@ class ModelTrainer:
 
         console.print(f"--- Data Preparation ---", style="info_title")
         console.print(
-            f"Loaded, processed, and split data: {len(train_dataset)} train, {len(val_dataset)} val, {len(eval_dataset)} test samples.",
+            f"Loaded, processed, and split data: {len(train_dataset)} train, {len(val_dataset)} val, {len(eval_dataset)} eval, {len(test_dataset)} test samples.",
             style="info_text",
         )
         console.print(f"------\n", style="info_title")
