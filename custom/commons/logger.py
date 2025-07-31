@@ -10,6 +10,7 @@ class McLogger:
         neptune_run = neptune.init_run(
             project=os.getenv("NEPTUNE_PROJECT"),
             api_token=os.getenv("NEPTUNE_API_TOKEN"),
+            mode=config.logging_mode,
         )
         neptune_run["config"] = stringify_unsupported(config.__dict__)
 

@@ -36,7 +36,7 @@ class SAINTConfig:
     label_smoothing: bool = False
 
     # Logging
-    enable_logging: bool = True
+    logging_mode: Literal["async", "debug"] = "debug"
     log_every_n_steps: int = 50
 
     # Training hyperparams

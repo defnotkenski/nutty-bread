@@ -381,7 +381,10 @@ class ModelTrainer:
             self.mclogger.log("race_accuracy", test_race_accuracy)
 
             # --- Log test metrics to the console too ---
-            print(f"{status} Test | Race Accuracy: {test_race_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}\n")
+            console.print(
+                f"{status} Test | Race Accuracy: {test_race_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}\n",
+                style="info_text",
+            )
 
             # --- Also log the epoch ---
             self.mclogger.set_context("meta")
@@ -391,5 +394,5 @@ class ModelTrainer:
         self.mclogger.stop()
 
         # --- If it reaches this point, thank fuckin god ---
-        print("🪿 --- Training finished --- 🪿")
+        console.print("🪿 --- Training finished --- 🪿", style="info_title")
         return
