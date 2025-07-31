@@ -12,14 +12,18 @@ from torch.optim.lr_scheduler import OneCycleLR
 from schedulefree import AdamWScheduleFree
 import signal
 from tqdm.rich import tqdm
+import warnings
 
 from rich.console import Console
 from rich.theme import Theme
 
 # Type Imports
+from tqdm import TqdmExperimentalWarning
 from custom.models.saint_transformer.saint_transformer import SAINTTransformer
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
+
+warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
 custom_theme = Theme({"info_title": "khaki1", "info_text": "bold grey85"})
 console = Console(theme=custom_theme)
