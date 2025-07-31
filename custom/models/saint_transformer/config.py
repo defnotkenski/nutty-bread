@@ -5,10 +5,10 @@ from typing import Literal
 @dataclass
 class SAINTConfig:
     # Notes
-    notes: str = ""
+    notes: str = "Switched over to the test set instead of val and eval."
 
     # EBT hyperparams
-    mcmc_num_steps: int = 4
+    mcmc_num_steps: int = 3
     mcmc_step_size: float = 0.1
     entropy_beta: float = 0.01
 

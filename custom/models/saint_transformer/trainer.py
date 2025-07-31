@@ -351,26 +351,26 @@ class ModelTrainer:
             status = "Initial" if epoch == 0 else f"Epoch: {epoch}"
 
             # --- Validation Block ---
-            epoch_avg_loss, epoch_race_accuracy = self._validate_model(model, dataloader=val_dataloader)
+            # epoch_avg_loss, epoch_race_accuracy = self._validate_model(model, dataloader=val_dataloader)
 
             # --- Log validation metrics ---
-            self.mclogger.set_context("val")
-            self.mclogger.log("loss", epoch_avg_loss)
-            self.mclogger.log("race_accuracy", epoch_race_accuracy)
+            # self.mclogger.set_context("val")
+            # self.mclogger.log("loss", epoch_avg_loss)
+            # self.mclogger.log("race_accuracy", epoch_race_accuracy)
 
             # --- Log validation metrics to the console too ---
-            print(f"{status} Validation | Race Accuracy: {epoch_race_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}")
+            # print(f"{status} Validation | Race Accuracy: {epoch_race_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}")
 
             # --- Evaluation Block ---
-            eval_avg_loss, eval_race_accuracy = self._validate_model(model, dataloader=eval_dataloader)
+            # eval_avg_loss, eval_race_accuracy = self._validate_model(model, dataloader=eval_dataloader)
 
             # --- Log Evaluation Metrics ---
-            self.mclogger.set_context("eval")
-            self.mclogger.log("loss", eval_avg_loss)
-            self.mclogger.log("race_accuracy", eval_race_accuracy)
+            # self.mclogger.set_context("eval")
+            # self.mclogger.log("loss", eval_avg_loss)
+            # self.mclogger.log("race_accuracy", eval_race_accuracy)
 
             # --- Log evaluation metrics to the console too ---
-            print(f"{status} Evaluation | Race Accuracy: {eval_race_accuracy:.4f}, Avg. Loss: {eval_avg_loss:.4f}\n")
+            # print(f"{status} Evaluation | Race Accuracy: {eval_race_accuracy:.4f}, Avg. Loss: {eval_avg_loss:.4f}\n")
 
             # --- Test Block ---
             test_avg_loss, test_race_accuracy = self._validate_model(model, dataloader=test_dataloader)
