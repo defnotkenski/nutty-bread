@@ -28,6 +28,7 @@ class SAINTTransformer(nn.Module):
 
         # === Configuration ===
         self.config = config
+        assert self.config.num_variants >= 1, f"num_variants must be at least 1"
 
         # === Training Parameters ===
         self.pos_weight = torch.tensor(pos_weight)
@@ -169,6 +170,118 @@ class SAINTTransformer(nn.Module):
 
         return race_outputs
 
+    def _apply_replay_buffer(self, predictions: Tensor) -> Tensor:
+        """
+        Mix predictions with replay buffer samples during training.
+        """
+        num_variants, batch_size, horse_len = predictions.shape
+
+        total_items = num_variants * batch_size
+        num_replay = int(total_items * self.config.mcmc_replay_buffer_sample_bs_percent)
+        replay_samples = self.replay_buffer.sample(num_replay, horse_len, predictions.device)
+
+        if replay_samples is None:
+            return predictions
+
+        predictions_flat = predictions.view(total_items, horse_len)
+        predictions_flat[-num_replay:] = replay_samples
+        predictions = predictions_flat.view(num_variants, batch_size, horse_len)
+
+        return predictions
+
+    @staticmethod
+    def _apply_per_race_softmax(logits_tensor: Tensor, attention_mask: Tensor):
+        """
+        Helper method for applying softmax to a single variant.
+
+        Args:
+            logits_tensor: [batch_len, horse_len] - Raw prediction scores for each horse
+            attention_mask: [batch_len, horse_len] - Binary mask
+        Returns:
+            race_probs: [batch_len, horse_len] - Softmax probabilities for each horse within their race
+        """
+        # Extract dimensions: [batch_len, horse_len]
+        batch_len, horse_len = logits_tensor.shape
+
+        # Create output tensor initialized with zeros -> [batch_size, horse_len]
+        race_probs = torch.zeros_like(logits_tensor)
+
+        # Loop through each race in the batch
+        for race_idx in range(batch_len):
+            # Get boolean mask for current race -> [horse_len] as boolean tensor
+            # True for real horses, False for padding
+            horse_mask = attention_mask[race_idx].bool()
+
+            # Check if current race has multiple horses
+            if horse_mask.sum() > 1:
+                # Extract logits only for real horses -> [num_real_horses]
+                # Variable length depending on how many True values in mask
+                race_logits = logits_tensor[race_idx][horse_mask]
+
+                # Apply softmax to compete only within this race -> [num_real_horses]
+                race_softmax = f.softmax(race_logits, dim=0)
+
+                # Put softmax results back into output tensor
+                race_probs[race_idx][horse_mask] = race_softmax
+
+            # Handle edge case of single horse race
+            elif horse_mask.sum() == 1:
+                race_probs[race_idx][horse_mask] = 1.0
+
+        return race_probs
+
+    def _select_best_variant(self, variants_preds: Tensor, features: Tensor, attention_mask: Tensor) -> Tensor:
+        """
+        Selects the best variant per batch item based on config.
+
+        Args:
+            variants_preds: [num_variants, batch_len, horse_len] - Raw prediction scores for each variant
+            features: [batch_len, horse_len, d_model] - Horse feature representations
+            attention_mask: [batch_len, horse_len] - Mask indicating real horses vs padding
+        Returns:
+            best_preds:[batch_len, horse_len] - Best prediction per race based on lowest energy
+
+
+        Note: I have no desire to implement other strategies for the sake of simplicity.
+        """
+        # Extract dimensions: [3, 32, 20]
+        num_variants, batch_size, horse_len = variants_preds.shape
+
+        # Create an empty tensor filled with zeros: [32, 20]
+        best_preds = torch.zeros(batch_size, horse_len, device=variants_preds.device)
+
+        # Add dimension: [3, 32, 20] -> [3, 32, 20, 1]
+        # Apply sigmoid to convert to probabilities
+        probs = torch.sigmoid(variants_preds.unsqueeze(-1))
+
+        # Add dimension to features: [batch_len, horse_len, d_model] -> [1, ...]
+        # Expand to: [3, ...]
+        energies = self.energy_function(features.unsqueeze(0).expand(num_variants, -1, -1, -1), probs)
+
+        # Add dimension to attention_mask [batch_len, horse_len] -> [1, batch_len, horse_len]
+        # Multiply energies by mask to zero out padding horses
+        masked_energies = energies * attention_mask.unsqueeze(0).float()
+
+        # Sum energies across horses: [num_variants, batch_len, horse_len] -> [num_variants, batch_len]
+        # This gives total energy per race for each variant.
+        sum_energies = masked_energies.sum(dim=-1)
+
+        # Sum energies across horses: [batch_len, horse_len] -> [1, batch_len]
+        # This gives count of real horses per race. Prevents division by zero if no horses. Adds variant dimension.
+        sum_attention_mask = attention_mask.sum(dim=-1).clamp(min=1).unsqueeze(0)
+
+        # Division via broadcasting -> [num_variants, batch_len]
+        mean_energies = sum_energies / sum_attention_mask
+
+        # Find the index of the min. value along the variant dimension -> [batch_len]
+        best_indices = mean_energies.argmin(dim=0)
+
+        for b in range(batch_size):
+            # Index the first dimension of best_preds and replace [horse_len] with winning variant's [horse_len]
+            best_preds[b] = variants_preds[best_indices[b], b]
+
+        return best_preds
+
     def _mcmc_step(self, features: Tensor, predictions: Tensor, attention_mask: Tensor) -> Tensor:
         """Performs a single MCMC step: energy computation, gradient update, and regularization."""
 
@@ -206,16 +319,9 @@ class SAINTTransformer(nn.Module):
                 langevin_noise = torch.randn_like(predictions).detach() * self.langevin_noise_std
                 predictions = predictions + langevin_noise
 
-        # predictions = (torch.tanh(predictions - 0.5) + 1) / 2 * (1 - 2e-7) + 1e-7
         return predictions
 
-    def forward(
-        self,
-        x: dict[str, torch.Tensor],
-        attention_mask: torch.Tensor,
-        num_mcmc_steps: int = None,
-        return_all_steps: bool = False,
-    ):
+    def forward(self, x: dict[str, torch.Tensor], attention_mask: torch.Tensor, num_mcmc_steps: int = None):
         if num_mcmc_steps is None:
             num_mcmc_steps = self.config.mcmc_num_steps
 
@@ -234,74 +340,61 @@ class SAINTTransformer(nn.Module):
 
         # --- Vectorized processing ---
         race_outputs = self._vectorized_processing(x, attention_mask)
-
         features = torch.stack(race_outputs)
 
-        # --- Energy minimization with step tracking ---
-        predictions = torch.randn(batch_size, horse_len, device=x.device) * 0.1
+        # --- Initialize multiple variants ---
+        num_variants = self.config.num_variants
+        predictions = torch.randn(num_variants, batch_size, horse_len, device=x.device) * 0.1
         predictions = torch.clamp(predictions, min=-10, max=10)
+        predictions.requires_grad_(True)
 
         # --- Replay Buffer: Replace some predictions with stored ones ---
         if self.training and self.replay_buffer is not None and len(self.replay_buffer) > 0:
-            replay_samples = self.replay_buffer.sample(batch_size, horse_len, x.device)
-            if replay_samples is not None:
-                num_replay = replay_samples.shape[0]
-                predictions[-num_replay:] = replay_samples
+            predictions = self._apply_replay_buffer(predictions)
 
         all_step_logits = []
-
-        predictions.requires_grad_(True)
         for mcmc_step in range(num_mcmc_steps):
-            predictions = self._mcmc_step(features, predictions, attention_mask)
+            # Expand features and mask to match variants dim
+            features_exp = features.unsqueeze(0).expand(num_variants, -1, -1, -1)
+            mask_exp = attention_mask.unsqueeze(0).expand(num_variants, -1, -1)
 
-            if return_all_steps:
-                all_step_logits.append(predictions.unsqueeze(-1))
+            # Flatten for energy computation (process all variants at once)
+            predictions_flat = predictions.view(num_variants * batch_size, horse_len)
+            features_flat = features_exp.view(num_variants * batch_size, horse_len, d_model)
+            mask_flat = mask_exp.view(num_variants * batch_size, horse_len)
+
+            predictions_flat = self._mcmc_step(features_flat, predictions_flat, mask_flat)
+
+            # Reshape back
+            predictions = predictions_flat.view(num_variants, batch_size, horse_len)
+
+            all_step_logits.append(predictions.unsqueeze(-1))
 
         # --- Store predictions in replay buffer for future use ---
         if self.training and self.replay_buffer is not None:
-            self.replay_buffer.add(predictions)
+            self.replay_buffer.add(predictions.view(-1, horse_len))
 
-        # --- Apply race-level normalization (inference only) ---
-        if not self.training and self.config.normalize_race_predictions:
-            for race_idx in range(batch_size):
-                mask = attention_mask[race_idx].bool()
-                if mask.sum() > 1:
-                    predictions[race_idx][mask] = f.softmax(predictions[race_idx][mask], dim=0)
+        # --- Select the best variant per batch item ---
+        competitive_steps = []
+        for step_idx in range(len(all_step_logits)):
+            step_logits = all_step_logits[step_idx].squeeze(-1)
 
-        # --- Apply per-race softmax for competitive classification ---
-        def apply_race_softmax(logits_tensor: Tensor, s_attention_mask: Tensor):
-            num_races, _ = logits_tensor.shape
-            race_probs = torch.zeros_like(logits_tensor)
+            if num_variants > 1:
+                step_selected = self._select_best_variant(step_logits, features, attention_mask)
+                step_probs = self._apply_per_race_softmax(step_selected, attention_mask)
+            else:
+                step_probs = self._apply_per_race_softmax(step_logits.squeeze(0), attention_mask)
 
-            for s_race_idx in range(num_races):
-                horse_mask = s_attention_mask[s_race_idx].bool()
-                if horse_mask.sum() > 1:  # If a race has more than one horse
-                    race_logits = logits_tensor[s_race_idx][horse_mask]
-                    race_softmax = f.softmax(race_logits, dim=0)
-                    race_probs[s_race_idx][horse_mask] = race_softmax
-                elif horse_mask.sum() == 1:  # Edge cases where a race would only have 1 horse
-                    race_probs[s_race_idx][horse_mask] = 1.0
+            competitive_steps.append(step_probs.unsqueeze(-1))
 
-            return race_probs
-
-        if return_all_steps:
-            # Apply softmax to each MCMC step
-            competitive_steps = []
-            for step_idx in range(len(all_step_logits)):
-                step_logits = all_step_logits[step_idx].squeeze(-1)
-                step_probs = apply_race_softmax(step_logits, attention_mask)
-                competitive_steps.append(step_probs.unsqueeze(-1))
-            return torch.stack(competitive_steps, dim=0)
-        else:
-            final_probs = apply_race_softmax(predictions, attention_mask)
-            return final_probs.unsqueeze(-1)
+        return torch.stack(competitive_steps, dim=0)
 
     def compute_step(
         self, batch: tuple[dict[str, Tensor], Tensor, Tensor, Tensor], apply_label_smoothing: bool
     ) -> tuple[Tensor, Tensor, Tensor]:
         x, y, attention_mask, winner_indices = batch
 
-        all_step_predictions = self(x, attention_mask, return_all_steps=True)
+        all_step_predictions = self(x, attention_mask)
         num_steps, batch_size, horse_len, _ = all_step_predictions.shape
 
         total_loss = 0

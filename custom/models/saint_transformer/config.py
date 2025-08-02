@@ -11,6 +11,8 @@ class SAINTConfig:
     mcmc_num_steps: int = 3
     mcmc_step_size: float = 0.1
     entropy_beta: float = 0.01
+    num_variants: int = 1
+    variant_selection: Literal["lowest_energy"] = "lowest_energy"
 
     # Langevin hyperparams
     langevin_dynamics_noise: float = 0.1  # Noise std for Langevin dynamics
@@ -50,9 +52,6 @@ class SAINTConfig:
     enable_checkpointing: bool = False
     precision: str | None = None
     early_stopping: bool = False
-
-    # Inference hyperparams
-    normalize_race_predictions: bool = False
 
     # Attention hyperparams
     num_competitors: int = 4
