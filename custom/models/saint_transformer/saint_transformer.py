@@ -183,8 +183,9 @@ class SAINTTransformer(nn.Module):
         if replay_samples is None:
             return predictions
 
+        actual_num_replay = replay_samples.shape[0]
         predictions_flat = predictions.view(total_items, horse_len)
-        predictions_flat[-num_replay:] = replay_samples
+        predictions_flat[-actual_num_replay:] = replay_samples
         predictions = predictions_flat.view(num_variants, batch_size, horse_len)
 
         return predictions
