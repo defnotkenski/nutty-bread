@@ -185,7 +185,10 @@ class SAINTTransformer(nn.Module):
 
         actual_num_replay = replay_samples.shape[0]
         predictions_flat = predictions.view(total_items, horse_len)
-        predictions_flat[-actual_num_replay:] = replay_samples
+
+        if actual_num_replay > 0:
+            predictions_flat = torch.cat((predictions_flat[:-actual_num_replay], replay_samples), dim=0)
+
         predictions = predictions_flat.view(num_variants, batch_size, horse_len)
 
         return predictions
