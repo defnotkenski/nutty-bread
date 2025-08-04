@@ -364,13 +364,13 @@ class SAINTTransformer(nn.Module):
 
             # Flatten for energy computation (process all variants at once)
             predictions_flat = predictions.view(num_variants * batch_size, horse_len)
-            features_flat = features_exp.view(num_variants * batch_size, horse_len, d_model)
-            mask_flat = mask_exp.view(num_variants * batch_size, horse_len)
+            features_flat = features_exp.reshape(num_variants * batch_size, horse_len, d_model)
+            mask_flat = mask_exp.reshape(num_variants * batch_size, horse_len)
 
             predictions_flat = self._mcmc_step(features_flat, predictions_flat, mask_flat)
 
             # Reshape back
-            predictions = predictions_flat.view(num_variants, batch_size, horse_len)
+            predictions = predictions_flat.reshape(num_variants, batch_size, horse_len)
 
             all_step_logits.append(predictions.unsqueeze(-1))
 
