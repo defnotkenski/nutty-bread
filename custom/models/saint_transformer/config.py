@@ -11,7 +11,7 @@ class SAINTConfig:
     mcmc_num_steps: int = 3
     mcmc_step_size: float = 0.1
     entropy_beta: float = 0.01
-    num_variants: int = 2
+    num_variants: int = 3
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
 
     # Langevin hyperparams
@@ -38,7 +38,7 @@ class SAINTConfig:
     label_smoothing: bool = False
 
     # Logging
-    logging_mode: Literal["async", "debug"] = "debug"
+    logging_mode: Literal["async", "debug"] = "async"
     log_every_n_steps: int = 50
 
     # Training hyperparams
