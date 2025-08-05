@@ -11,7 +11,7 @@ class SAINTConfig:
     mcmc_num_steps: int = 3
     mcmc_step_size: float = 0.1
     entropy_beta: float = 0.01
-    num_variants: int = 2
+    num_variants: int = 1
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
 
     # Langevin hyperparams
