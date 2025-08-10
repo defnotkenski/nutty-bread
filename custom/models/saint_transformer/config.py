@@ -11,7 +11,7 @@ class SAINTConfig:
     mcmc_num_steps: int = 3
     mcmc_step_size: float = 0.1
     entropy_beta: float = 0.01
-    num_variants: int = 1
+    num_variants: int = 3
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
 
     # Langevin hyperparams
@@ -19,10 +19,10 @@ class SAINTConfig:
     langevin_dynamics_noise_learnable: bool = False  # Make noise learnable
     no_langevin_during_eval: bool = True  # Disable noise during validation
 
-    # Replay Buffer Parameters
-    mcmc_replay_buffer: bool = True  # Enable replay buffer
-    mcmc_replay_buffer_size: int = 192  # Buffer size
-    mcmc_replay_buffer_sample_bs_percent: float = 0.5  # % of batch from buffer
+    # Memory Bakery Parameters
+    mcmc_memory_bakery: bool = True  # Enable memory bakery
+    mcmc_memory_bakery_size: int = 192  # Buffer size
+    mcmc_memory_bakery_sample_bs_percent: float = 0.5  # % of batch from buffer
 
     # MCMC Randomization
     randomize_mcmc_num_steps: int = 1  # Max random variation in steps

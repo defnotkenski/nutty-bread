@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as f
 from custom.blocks.energy_function_blocks import EnergyFunction
-from custom.commons.replay_buffer import EBTReplayBuffer
+from custom.commons.memory_bakery import MemoryBakery
 from custom.layers.dual_attention_layer import DualAttentionLayer
 from custom.models.saint_transformer.config import SAINTConfig
 from custom.commons.batched_embedding import BatchedEmbedding
@@ -53,15 +53,14 @@ class SAINTTransformer(nn.Module):
         )
 
         self.pooler = AttentionPooling(d_model)
-        # self.output_layer = nn.Linear(d_model, output_size)
         self.energy_function = EnergyFunction(d_model)
         self.output_size = output_size
 
         # === EBT Regularization components ===
-        if config.mcmc_replay_buffer:
-            self.replay_buffer = EBTReplayBuffer(config.mcmc_replay_buffer_size, config.mcmc_replay_buffer_sample_bs_percent)
+        if config.mcmc_memory_bakery:
+            self.memory_bakery = MemoryBakery(config.mcmc_memory_bakery_size, config.mcmc_memory_bakery_sample_bs_percent)
         else:
-            self.replay_buffer = None
+            self.memory_bakery = None
 
         # Learnable Langevin noise (if enabled)
         if config.langevin_dynamics_noise_learnable:
@@ -170,15 +169,15 @@ class SAINTTransformer(nn.Module):
 
         return race_outputs
 
-    def _apply_replay_buffer(self, predictions: Tensor) -> Tensor:
+    def _apply_memory_bakery(self, predictions: Tensor) -> Tensor:
         """
-        Mix predictions with replay buffer samples during training.
+        Mix predictions with memory bakery samples during training.
         """
         num_variants, batch_size, horse_len = predictions.shape
 
         total_items = num_variants * batch_size
-        num_replay = int(total_items * self.config.mcmc_replay_buffer_sample_bs_percent)
-        replay_samples = self.replay_buffer.sample(num_replay, horse_len, predictions.device)
+        num_replay = int(total_items * self.config.mcmc_memory_bakery_sample_bs_percent)
+        replay_samples = self.memory_bakery.sample(num_replay, horse_len, predictions.device)
 
         if replay_samples is None:
             return predictions
@@ -352,9 +351,9 @@ class SAINTTransformer(nn.Module):
         predictions = torch.clamp(predictions, min=-10, max=10)
         predictions.requires_grad_(True)
 
-        # --- Replay Buffer: Replace some predictions with stored ones ---
-        if self.training and self.replay_buffer is not None and len(self.replay_buffer) > 0:
-            predictions = self._apply_replay_buffer(predictions)
+        # --- Memory Bakery: Replace some predictions with stored ones ---
+        if self.training and self.memory_bakery is not None and len(self.memory_bakery) > 0:
+            predictions = self._apply_memory_bakery(predictions)
 
         all_step_logits = []
         for mcmc_step in range(num_mcmc_steps):
@@ -374,9 +373,9 @@ class SAINTTransformer(nn.Module):
 
             all_step_logits.append(predictions.unsqueeze(-1))
 
-        # --- Store predictions in replay buffer for future use ---
-        if self.training and self.replay_buffer is not None:
-            self.replay_buffer.add(predictions.view(-1, horse_len))
+        # --- Store predictions in memory bakery for future use ---
+        if self.training and self.memory_bakery is not None:
+            self.memory_bakery.add(predictions.view(-1, horse_len))
 
         # --- Select the best variant per batch item ---
         competitive_steps = []

@@ -3,9 +3,9 @@ from collections import deque
 import random
 
 
-class EBTReplayBuffer:
+class MemoryBakery:
     """
-    Replay buffer for storing and sampling previous predictions during EBT training.
+    Memory bakery for storing and sampling previous predictions during EBT training.
     """
 
     def __init__(self, max_size: int, sample_percent: float):
