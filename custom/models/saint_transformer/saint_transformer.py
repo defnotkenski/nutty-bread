@@ -7,8 +7,8 @@ from custom.layers.dual_attention_layer import DualAttentionLayer
 from custom.models.saint_transformer.config import SAINTConfig
 from custom.commons.batched_embedding import BatchedEmbedding
 from custom.blocks.attention_pooling_blocks import AttentionPooling
+from custom.blocks.mcmc_sampler import MCMCSampler
 
-# Import types
 from torch import Tensor
 
 
@@ -62,11 +62,8 @@ class SAINTTransformer(nn.Module):
         else:
             self.memory_bakery = None
 
-        # Learnable Langevin noise (if enabled)
-        if config.langevin_dynamics_noise_learnable:
-            self.langevin_noise_std = nn.Parameter(torch.tensor(config.langevin_dynamics_noise))
-        else:
-            self.register_buffer("langevin_noise_std", torch.tensor(config.langevin_dynamics_noise))
+        # === MCMC Sampler ===
+        self.mcmc_sampler = MCMCSampler(energy_fn=self.energy_function, config=config, memory_bakery=self.memory_bakery)
 
     @staticmethod
     def _create_block_diagonal_mask(attention_mask: Tensor) -> tuple[Tensor, Tensor, int]:
@@ -169,29 +166,6 @@ class SAINTTransformer(nn.Module):
 
         return race_outputs
 
-    def _apply_memory_bakery(self, predictions: Tensor) -> Tensor:
-        """
-        Mix predictions with memory bakery samples during training.
-        """
-        num_variants, batch_size, horse_len = predictions.shape
-
-        total_items = num_variants * batch_size
-        num_replay = int(total_items * self.config.mcmc_memory_bakery_sample_bs_percent)
-        replay_samples = self.memory_bakery.sample(num_replay, horse_len, predictions.device)
-
-        if replay_samples is None:
-            return predictions
-
-        actual_num_replay = replay_samples.shape[0]
-        predictions_flat = predictions.view(total_items, horse_len)
-
-        if actual_num_replay > 0:
-            predictions_flat = torch.cat((predictions_flat[:-actual_num_replay], replay_samples), dim=0)
-
-        predictions = predictions_flat.view(num_variants, batch_size, horse_len)
-
-        return predictions
-
     @staticmethod
     def _apply_per_race_softmax(logits_tensor: Tensor, attention_mask: Tensor):
         """
@@ -285,53 +259,13 @@ class SAINTTransformer(nn.Module):
 
         return best_preds
 
-    def _mcmc_step(self, features: Tensor, predictions: Tensor, attention_mask: Tensor) -> Tensor:
-        """Performs a single MCMC step: energy computation, gradient update, and regularization."""
+    def forward(self, x: dict[str, torch.Tensor], attention_mask: torch.Tensor):
+        """
+        Forward pass through the SAINT Transformer with Energy-Based Training.
 
-        # --- Convert logits to probabilities for energy/entropy calculations ---
-        probs = torch.sigmoid(predictions)
-
-        # --- Energy computation ---
-        energy_scores = self.energy_function(features, probs.unsqueeze(-1))
-        masked_energy = energy_scores * attention_mask.float()
-
-        # --- Mean-based energy calculations ---
-        energy_per_race = masked_energy.sum(dim=1)
-        horses_per_race = attention_mask.sum(dim=1)
-        mean_energy_per_race = energy_per_race / horses_per_race
-
-        # --- Binary entropy calculations ---
-        entropy = -(probs * torch.log(probs + 1e-7) + (1 - probs) * torch.log(1 - probs + 1e-7))
-        masked_entropy = entropy * attention_mask.float()
-        entropy_per_race = masked_entropy.sum(dim=1)
-        mean_entropy_per_race = entropy_per_race / horses_per_race
-
-        # --- Calculate total energy with entropy ---
-        total_energy = mean_energy_per_race.mean() - self.config.entropy_beta * mean_entropy_per_race.mean()
-
-        # --- Gradient computation and update ---
-        energy_grad = torch.autograd.grad(total_energy, predictions, create_graph=True)[0]
-        energy_grad = energy_grad * attention_mask.float()
-
-        predictions = predictions - self.config.mcmc_step_size * energy_grad
-
-        # --- Langevin Dynamics: Add noise (EBT regularization) ---
-        if self.training and self.langevin_noise_std > 0:
-            # Only add noise during training (not eval) if configured
-            if not (self.config.no_langevin_during_eval and not self.training):
-                langevin_noise = torch.randn_like(predictions).detach() * self.langevin_noise_std
-                predictions = predictions + langevin_noise
-
-        return predictions
-
-    def forward(self, x: dict[str, torch.Tensor], attention_mask: torch.Tensor, num_mcmc_steps: int = None):
-        if num_mcmc_steps is None:
-            num_mcmc_steps = self.config.mcmc_num_steps
-
-        # --- MCMC Step Randomization (EBT technique) ---
-        if self.training and self.config.randomize_mcmc_num_steps > 0:
-            random_variation = torch.randint(0, self.config.randomize_mcmc_num_steps + 1, (1,)).item()
-            num_mcmc_steps = max(self.config.randomize_mcmc_num_steps_min, num_mcmc_steps + random_variation)
+        Processes horse racing data through embedding, self-attention, and MCMC sampling
+        to produce competitive probability distributions for each MCMC step.
+        """
 
         # --- Embeddings ---
         x: torch.Tensor = self.embedding_layer(x)  # Returns: [batch_size, horses_len, num_features, d_model]
@@ -345,44 +279,15 @@ class SAINTTransformer(nn.Module):
         race_outputs = self._vectorized_processing(x, attention_mask)
         features = torch.stack(race_outputs)
 
-        # --- Initialize multiple variants ---
-        num_variants = self.config.num_variants
-        predictions = torch.randn(num_variants, batch_size, horse_len, device=x.device) * 0.1
-        predictions = torch.clamp(predictions, min=-10, max=10)
-        predictions.requires_grad_(True)
-
-        # --- Memory Bakery: Replace some predictions with stored ones ---
-        if self.training and self.memory_bakery is not None and len(self.memory_bakery) > 0:
-            predictions = self._apply_memory_bakery(predictions)
-
-        all_step_logits = []
-        for mcmc_step in range(num_mcmc_steps):
-            # Expand features and mask to match variants dim
-            features_exp = features.unsqueeze(0).expand(num_variants, -1, -1, -1)
-            mask_exp = attention_mask.unsqueeze(0).expand(num_variants, -1, -1)
-
-            # Flatten for energy computation (process all variants at once)
-            predictions_flat = predictions.view(num_variants * batch_size, horse_len)
-            features_flat = features_exp.reshape(num_variants * batch_size, horse_len, d_model)
-            mask_flat = mask_exp.reshape(num_variants * batch_size, horse_len)
-
-            predictions_flat = self._mcmc_step(features_flat, predictions_flat, mask_flat)
-
-            # Reshape back
-            predictions = predictions_flat.reshape(num_variants, batch_size, horse_len)
-
-            all_step_logits.append(predictions.unsqueeze(-1))
-
-        # --- Store predictions in memory bakery for future use ---
-        if self.training and self.memory_bakery is not None:
-            self.memory_bakery.add(predictions.view(-1, horse_len))
+        # --- MCMC sampler ---
+        all_step_logits = self.mcmc_sampler(features, attention_mask, self.training)
 
         # --- Select the best variant per batch item ---
         competitive_steps = []
         for step_idx in range(len(all_step_logits)):
             step_logits = all_step_logits[step_idx].squeeze(-1)
 
-            if num_variants > 1:
+            if self.config.num_variants > 1:
                 step_selected = self._select_best_variant(step_logits, features, attention_mask)
                 step_probs = self._apply_per_race_softmax(step_selected, attention_mask)
             else:
