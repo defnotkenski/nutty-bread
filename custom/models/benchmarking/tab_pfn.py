@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from functools import partial
 from pathlib import Path
-from custom.models.saint_transformer.data_processing import preprocess_df
+from custom.models.saddle.data_processing import preprocess_df
 from tabpfn import TabPFNClassifier
 from tabpfn.utils import meta_dataset_collator
 from tabpfn.finetune_utils import clone_model_for_evaluation

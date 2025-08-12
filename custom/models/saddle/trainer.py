@@ -1,11 +1,11 @@
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-from custom.models.saint_transformer.data_processing import preprocess_df, SAINTDataset, PreProcessor
+from custom.models.saddle.data_processing import preprocess_df, SAINTDataset, PreProcessor
 from pathlib import Path
 from sklearn.model_selection import train_test_split
-from custom.models.saint_transformer.config import SAINTConfig
-from custom.models.saint_transformer.data_processing import collate_races
+from custom.models.saddle.config import SAINTConfig
+from custom.models.saddle.data_processing import collate_races
 from prodigyplus import ProdigyPlusScheduleFree
 from custom.commons.logger import McLogger
 from torch.optim.lr_scheduler import OneCycleLR
@@ -19,7 +19,7 @@ from rich.theme import Theme
 
 # Type Imports
 from tqdm import TqdmExperimentalWarning
-from custom.models.saint_transformer.saint_transformer import SAINTTransformer
+from custom.models.saddle.saddle_model import SaddleModel
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 
@@ -146,7 +146,7 @@ class ModelTrainer:
         return x, y, attention_mask, winner_indices
 
     def _prepare_optimizer(
-        self, model: SAINTTransformer, train_dataloader: DataLoader
+        self, model: SaddleModel, train_dataloader: DataLoader
     ) -> tuple[Optimizer | ProdigyPlusScheduleFree, LRScheduler | None]:
         """Create optimizer and scheduler"""
         config = self.config
@@ -194,11 +194,11 @@ class ModelTrainer:
 
         return optimizer, scheduler
 
-    def _setup_model(self, preprocessed: PreProcessor) -> SAINTTransformer:
+    def _setup_model(self, preprocessed: PreProcessor) -> SaddleModel:
         config = self.config
         pos_weight = calc_pos_weight(preprocessed)
 
-        model = SAINTTransformer(
+        model = SaddleModel(
             continuous_dims=preprocessed.continuous_tensor.shape[1],
             categorical_dims=preprocessed.categorical_cardinalities,
             num_block_layers=config.num_block_layers,
@@ -215,7 +215,7 @@ class ModelTrainer:
 
     def _train_epoch(
         self,
-        model: SAINTTransformer,
+        model: SaddleModel,
         optimizer: Optimizer | ProdigyPlusScheduleFree,
         scheduler: LRScheduler | None,
         epoch: int,
@@ -265,7 +265,7 @@ class ModelTrainer:
 
             p_bar.set_postfix(loss=f"{loss.item():.4f}")
 
-    def _validate_model(self, model: SAINTTransformer, dataloader: DataLoader):
+    def _validate_model(self, model: SaddleModel, dataloader: DataLoader):
         all_losses = []
 
         # --- Collect race-level data ---

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from custom.models.saint_transformer.config import SAINTConfig
+from custom.models.saddle.config import SAINTConfig
 from torch import Tensor
 
 

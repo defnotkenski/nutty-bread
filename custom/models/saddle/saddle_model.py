@@ -4,7 +4,7 @@ import torch.nn.functional as f
 from custom.blocks.energy_function_blocks import EnergyFunction
 from custom.commons.memory_bakery import MemoryBakery
 from custom.layers.dual_attention_layer import DualAttentionLayer
-from custom.models.saint_transformer.config import SAINTConfig
+from custom.models.saddle.config import SAINTConfig
 from custom.commons.batched_embedding import BatchedEmbedding
 from custom.blocks.attention_pooling_blocks import AttentionPooling
 from custom.blocks.mcmc_sampler import MCMCSampler
@@ -12,7 +12,7 @@ from custom.blocks.mcmc_sampler import MCMCSampler
 from torch import Tensor
 
 
-class SAINTTransformer(nn.Module):
+class SaddleModel(nn.Module):
     def __init__(
         self,
         continuous_dims,

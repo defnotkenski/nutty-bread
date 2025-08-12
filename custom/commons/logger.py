@@ -1,7 +1,7 @@
 from typing import Literal
 import neptune
 from neptune.utils import stringify_unsupported
-from custom.models.saint_transformer.config import SAINTConfig
+from custom.models.saddle.config import SAINTConfig
 import os
 
 

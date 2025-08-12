@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 from custom.blocks.attention_blocks import IntraRowAttention, InterRowAttention
 from custom.blocks.lwta_blocks import LWTA
-from custom.models.saint_transformer.config import SAINTConfig
+from custom.models.saddle.config import SAINTConfig
 from custom.blocks.activation_blocks import SwiGLU
 
 

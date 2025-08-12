@@ -1,5 +1,5 @@
-from custom.models.saint_transformer.trainer import ModelTrainer
-from custom.models.saint_transformer.config import SAINTConfig
+from custom.models.saddle.trainer import ModelTrainer
+from custom.models.saddle.config import SAINTConfig
 from pathlib import Path
 import modal
 import torch
