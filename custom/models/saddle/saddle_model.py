@@ -65,6 +65,44 @@ class SaddleModel(nn.Module):
         # === MCMC Sampler ===
         self.mcmc_sampler = MCMCSampler(energy_fn=self.energy_function, config=config, memory_bakery=self.memory_bakery)
 
+    def forward(self, x: dict[str, torch.Tensor], attention_mask: torch.Tensor):
+        """
+        Forward pass through the SAINT Transformer with Energy-Based Training.
+
+        Processes horse racing data through embedding, self-attention, and MCMC sampling
+        to produce competitive probability distributions for each MCMC step.
+        """
+
+        # --- Embeddings ---
+        x: torch.Tensor = self.embedding_layer(x)  # Returns: [batch_size, horses_len, num_features, d_model]
+        batch_size, horse_len, num_features, d_model = x.shape
+
+        assert (
+            num_features == self.race_cls_token.shape[1]
+        ), f"Feature mismatch: {num_features} vs {self.race_cls_token.shape[1]}"
+
+        # --- Vectorized processing ---
+        race_outputs = self._vectorized_processing(x, attention_mask)
+        features = torch.stack(race_outputs)
+
+        # --- MCMC sampler ---
+        all_step_logits = self.mcmc_sampler(features, attention_mask, self.training)
+
+        # --- Select the best variant per batch item ---
+        competitive_steps = []
+        for step_idx in range(len(all_step_logits)):
+            step_logits = all_step_logits[step_idx].squeeze(-1)
+
+            if self.config.num_variants > 1:
+                step_selected = self._select_best_variant(step_logits, features, attention_mask)
+                step_probs = self._apply_per_race_softmax(step_selected, attention_mask)
+            else:
+                step_probs = self._apply_per_race_softmax(step_logits.squeeze(0), attention_mask)
+
+            competitive_steps.append(step_probs.unsqueeze(-1))
+
+        return torch.stack(competitive_steps, dim=0)
+
     @staticmethod
     def _create_block_diagonal_mask(attention_mask: Tensor) -> tuple[Tensor, Tensor, int]:
         """
@@ -258,44 +296,6 @@ class SaddleModel(nn.Module):
             best_preds[b] = variants_preds[best_indices[b], b]
 
         return best_preds
-
-    def forward(self, x: dict[str, torch.Tensor], attention_mask: torch.Tensor):
-        """
-        Forward pass through the SAINT Transformer with Energy-Based Training.
-
-        Processes horse racing data through embedding, self-attention, and MCMC sampling
-        to produce competitive probability distributions for each MCMC step.
-        """
-
-        # --- Embeddings ---
-        x: torch.Tensor = self.embedding_layer(x)  # Returns: [batch_size, horses_len, num_features, d_model]
-        batch_size, horse_len, num_features, d_model = x.shape
-
-        assert (
-            num_features == self.race_cls_token.shape[1]
-        ), f"Feature mismatch: {num_features} vs {self.race_cls_token.shape[1]}"
-
-        # --- Vectorized processing ---
-        race_outputs = self._vectorized_processing(x, attention_mask)
-        features = torch.stack(race_outputs)
-
-        # --- MCMC sampler ---
-        all_step_logits = self.mcmc_sampler(features, attention_mask, self.training)
-
-        # --- Select the best variant per batch item ---
-        competitive_steps = []
-        for step_idx in range(len(all_step_logits)):
-            step_logits = all_step_logits[step_idx].squeeze(-1)
-
-            if self.config.num_variants > 1:
-                step_selected = self._select_best_variant(step_logits, features, attention_mask)
-                step_probs = self._apply_per_race_softmax(step_selected, attention_mask)
-            else:
-                step_probs = self._apply_per_race_softmax(step_logits.squeeze(0), attention_mask)
-
-            competitive_steps.append(step_probs.unsqueeze(-1))
-
-        return torch.stack(competitive_steps, dim=0)
 
     def compute_step(
         self, batch: tuple[dict[str, Tensor], Tensor, Tensor, Tensor], apply_label_smoothing: bool
