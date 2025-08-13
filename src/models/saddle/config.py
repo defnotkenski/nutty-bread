@@ -13,6 +13,8 @@ class SADDLEConfig:
     entropy_beta: float = 0.01
     num_variants: int = 3
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
+    use_timestep_embeddings: bool = False
+    softmax_temperature: float = 1.0
 
     # Langevin hyperparams
     langevin_dynamics_noise: float = 0.1  # Noise std for Langevin dynamics

@@ -35,9 +35,10 @@ class EnergyOptimizer(nn.Module):
         competitive_steps = []
         for step_idx in range(len(all_step_logits)):
             step_logits = all_step_logits[step_idx].squeeze(-1)
+            step_for_energy = step_idx if self.config.use_timestep_embeddings else None
 
             if self.config.num_variants > 1:
-                step_selected = self._select_best_variant(step_logits, features, attention_mask)
+                step_selected = self._select_best_variant(step_logits, features, attention_mask, step_for_energy)
                 step_probs = self._apply_per_race_softmax(step_selected, attention_mask)
             else:
                 step_probs = self._apply_per_race_softmax(step_logits.squeeze(0), attention_mask)
@@ -46,8 +47,7 @@ class EnergyOptimizer(nn.Module):
 
         return torch.stack(competitive_steps, dim=0)
 
-    @staticmethod
-    def _apply_per_race_softmax(logits_tensor: Tensor, attention_mask: Tensor):
+    def _apply_per_race_softmax(self, logits_tensor: Tensor, attention_mask: Tensor):
         """
         Helper method for applying softmax to a single variant.
 
@@ -57,6 +57,10 @@ class EnergyOptimizer(nn.Module):
         Returns:
             race_probs: [batch_len, horse_len] - Softmax probabilities for each horse within their race
         """
+
+        # Pull temperature from config, clamp to avoid div-by-zero or extreme values
+        T = getattr(self.config, "softmax_temperature", 1.0)
+        T = float(max(T, 1e-6))
 
         # Extract dimensions: [batch_len, horse_len]
         batch_len, horse_len = logits_tensor.shape
@@ -77,7 +81,7 @@ class EnergyOptimizer(nn.Module):
                 race_logits = logits_tensor[race_idx][horse_mask]
 
                 # Apply softmax to compete only within this race -> [num_real_horses]
-                race_softmax = f.softmax(race_logits, dim=0)
+                race_softmax = f.softmax(race_logits / T, dim=0)
 
                 # Put softmax results back into output tensor
                 race_probs[race_idx][horse_mask] = race_softmax
@@ -88,7 +92,9 @@ class EnergyOptimizer(nn.Module):
 
         return race_probs
 
-    def _select_best_variant(self, variants_preds: Tensor, features: Tensor, attention_mask: Tensor) -> Tensor:
+    def _select_best_variant(
+        self, variants_preds: Tensor, features: Tensor, attention_mask: Tensor, step_idx: int | None
+    ) -> Tensor:
         """
         Selects the best variant per batch item based on config.
 
@@ -114,7 +120,7 @@ class EnergyOptimizer(nn.Module):
 
         # Add dimension to features: [batch_len, horse_len, d_model] -> [1, ...]
         # Expand to: [3, ...]
-        energies = self.energy_fn(features.unsqueeze(0).expand(num_variants, -1, -1, -1), probs)
+        energies = self.energy_fn(features.unsqueeze(0).expand(num_variants, -1, -1, -1), probs, step_idx=step_idx)
 
         # Add dimension to attention_mask [batch_len, horse_len] -> [1, batch_len, horse_len]
         # Multiply energies by mask to zero out padding horses
