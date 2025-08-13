@@ -1,12 +1,12 @@
 from typing import Literal
 import neptune
 from neptune.utils import stringify_unsupported
-from custom.models.saddle.config import SAINTConfig
+from src.models.saddle.config import SADDLEConfig
 import os
 
 
 class McLogger:
-    def __init__(self, config: SAINTConfig):
+    def __init__(self, config: SADDLEConfig):
         neptune_run = neptune.init_run(
             project=os.getenv("NEPTUNE_PROJECT"),
             api_token=os.getenv("NEPTUNE_API_TOKEN"),
@@ -15,7 +15,7 @@ class McLogger:
         neptune_run["config"] = stringify_unsupported(config.__dict__)
 
         self.neptune_run: neptune.Run = neptune_run
-        self.config: SAINTConfig = config
+        self.config: SADDLEConfig = config
         self.global_step: int = 0
         self._context: Literal["train", "val", "eval", "test", "meta"] = "train"
 

@@ -1,15 +1,23 @@
 import torch
 import torch.nn as nn
-from custom.models.saddle.config import SAINTConfig
+from src.models.saddle.config import SADDLEConfig
 from torch import Tensor
 
 
 class MCMCSampler(nn.Module):
     """
-    Handles energy-based training (EBT) MCMC sampling.
+    Markov Chain Monte Carlo sampler that refines predictions using Langevin dynamics.
+
+    Generates multiple prediction variants and iteratively improves them through energy-guided
+    gradient descent with stochastic noise. Each MCMC step computes energy gradients to push
+    predictions toward more realistic states while adding Langevin noise for exploration.
+    Optionally integrates with memory bakery for experience replay during training.
+
+    Input: Feature representations and attention masks
+    Output: List of refined prediction tensors (one per MCMC step)
     """
 
-    def __init__(self, energy_fn, config: SAINTConfig, memory_bakery=None):
+    def __init__(self, energy_fn, config: SADDLEConfig, memory_bakery=None):
         super().__init__()
 
         self.energy_fn = energy_fn

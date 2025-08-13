@@ -1,5 +1,5 @@
-from custom.models.saddle.trainer import ModelTrainer
-from custom.models.saddle.config import SAINTConfig
+from src.models.saddle.trainer import ModelTrainer
+from src.models.saddle.config import SADDLEConfig
 from pathlib import Path
 import modal
 import torch
@@ -41,7 +41,7 @@ def run_with_modal() -> None:
     print(f"CUDA status: {has_cuda}")
 
     modal.interact()
-    config_modal = SAINTConfig()
+    config_modal = SADDLEConfig()
     trainer_modal = ModelTrainer(config_modal)
 
     trainer_modal.train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH)
@@ -56,7 +56,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    config = SAINTConfig()
+    config = SADDLEConfig()
     trainer = ModelTrainer(config)
 
     trainer.train_model(path_to_csv=GROUNDED_RAW_DATASET_PATH)

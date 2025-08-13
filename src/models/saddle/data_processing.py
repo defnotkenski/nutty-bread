@@ -7,10 +7,8 @@ from dataclasses import dataclass
 from torch.utils.data import Dataset
 from sklearn.preprocessing import StandardScaler
 from datasets.schemas.sample_horses_schema import COLUMN_TYPES
-from custom.commons.utils import cleanup_dataframe
-from custom.commons.feature_extractor import FeatureProcessor
-
-# Import typings
+from src.commons.utils import cleanup_dataframe
+from src.commons.feature_extractor import FeatureProcessor
 from torch import Tensor
 
 

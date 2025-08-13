@@ -3,7 +3,7 @@ from typing import Literal
 
 
 @dataclass
-class SAINTConfig:
+class SADDLEConfig:
     # Notes
     notes: str = "Switched over to the test set instead of val and eval."
 

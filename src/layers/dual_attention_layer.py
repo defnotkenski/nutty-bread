@@ -1,13 +1,11 @@
 import torch.nn as nn
 import torch
-from custom.blocks.attention_blocks import IntraRowAttention, InterRowAttention
-from custom.blocks.lwta_blocks import LWTA
-from custom.models.saddle.config import SAINTConfig
-from custom.blocks.activation_blocks import SwiGLU
+from src.models.saddle.config import SADDLEConfig
+from src.modules import InterRowAttention, IntraRowAttention, LWTA, SwiGLU
 
 
 class DualAttentionLayer(nn.Module):
-    def __init__(self, d_model: int = 64, num_heads: int = 4, num_competitors: int = 4, config: SAINTConfig = None):
+    def __init__(self, d_model: int = 64, num_heads: int = 4, num_competitors: int = 4, config: SADDLEConfig = None):
         super().__init__()
 
         self.d_model = d_model

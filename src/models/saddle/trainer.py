@@ -1,25 +1,22 @@
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-from custom.models.saddle.data_processing import preprocess_df, SAINTDataset, PreProcessor
+from src.models.saddle.data_processing import preprocess_df, SAINTDataset, PreProcessor
 from pathlib import Path
 from sklearn.model_selection import train_test_split
-from custom.models.saddle.config import SAINTConfig
-from custom.models.saddle.data_processing import collate_races
+from src.models.saddle.config import SADDLEConfig
+from src.models.saddle.data_processing import collate_races
 from prodigyplus import ProdigyPlusScheduleFree
-from custom.commons.logger import McLogger
+from src.commons.logger import McLogger
 from torch.optim.lr_scheduler import OneCycleLR
 from schedulefree import AdamWScheduleFree
 import signal
 from tqdm.rich import tqdm
 import warnings
-
 from rich.console import Console
 from rich.theme import Theme
-
-# Type Imports
 from tqdm import TqdmExperimentalWarning
-from custom.models.saddle.saddle_model import SaddleModel
+from src.models.saddle.saddle_model import SaddleModel
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 
@@ -44,7 +41,7 @@ def calc_pos_weight(preprocessed):
 
 
 class ModelTrainer:
-    def __init__(self, config: SAINTConfig):
+    def __init__(self, config: SADDLEConfig):
         self.config = config
 
         self.should_stop: bool = False
@@ -196,7 +193,7 @@ class ModelTrainer:
 
     def _setup_model(self, preprocessed: PreProcessor) -> SaddleModel:
         config = self.config
-        pos_weight = calc_pos_weight(preprocessed)
+        # pos_weight = calc_pos_weight(preprocessed)
 
         model = SaddleModel(
             continuous_dims=preprocessed.continuous_tensor.shape[1],
@@ -204,8 +201,6 @@ class ModelTrainer:
             num_block_layers=config.num_block_layers,
             d_model=config.d_model,
             num_heads=config.num_attention_heads,
-            output_size=config.output_size,
-            pos_weight=pos_weight,
             config=config,
         )
         model = torch.compile(model, mode="default", disable=config.disable_torch_compile)
