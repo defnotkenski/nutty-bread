@@ -13,7 +13,7 @@ class SADDLEConfig:
     entropy_beta: float = 0.01
     num_variants: int = 3
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
-    use_timestep_embeddings: bool = True
+    use_timestep_embeddings: bool = False
     timestep_num_bins: int = 8
     softmax_temperature: float = 1.0
 
@@ -47,7 +47,7 @@ class SADDLEConfig:
     # Training hyperparams
     disable_torch_compile: bool = False
     random_state: int = 777
-    batch_size: int = 32
+    batch_size: int = 64
     num_workers: int = 6
     accumulate_grad_batches: int = 1
     gradient_clip_val: float | None = 1.0
