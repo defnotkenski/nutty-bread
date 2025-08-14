@@ -23,7 +23,7 @@ class EnergyOptimizer(nn.Module):
         super().__init__()
 
         self.config = config
-        self.energy_fn = EnergyFunction(d_model)
+        self.energy_fn = EnergyFunction(d_model, num_step_bins=self.config.timestep_num_bins)
 
         self.memory_bakery = memory_bakery
         self.mcmc_sampler = MCMCSampler(energy_fn=self.energy_fn, config=config, memory_bakery=self.memory_bakery)
@@ -34,9 +34,10 @@ class EnergyOptimizer(nn.Module):
 
         # --- Select the best variant per batch item ---
         competitive_steps = []
-        for step_idx in range(len(all_step_logits)):
+        total_steps = len(all_step_logits)
+        for step_idx in range(total_steps):
             step_logits = all_step_logits[step_idx].squeeze(-1)
-            step_for_energy = step_idx if self.config.use_timestep_embeddings else None
+            step_for_energy = (step_idx, total_steps) if self.config.use_timestep_embeddings else None
 
             if self.config.num_variants > 1:
                 step_selected = self._select_best_variant(step_logits, features, attention_mask, step_for_energy)
@@ -94,7 +95,7 @@ class EnergyOptimizer(nn.Module):
         return race_probs
 
     def _select_best_variant(
-        self, variants_preds: Tensor, features: Tensor, attention_mask: Tensor, step_idx: int | None
+        self, variants_preds: Tensor, features: Tensor, attention_mask: Tensor, step_idx: tuple[int, int] | None
     ) -> Tensor:
         """
         Selects the best variant per batch item based on config.
@@ -103,6 +104,7 @@ class EnergyOptimizer(nn.Module):
             variants_preds: [num_variants, batch_len, horse_len] - Raw prediction scores for each variant
             features: [batch_len, horse_len, d_model] - Horse feature representations
             attention_mask: [batch_len, horse_len] - Mask indicating real horses vs padding
+            step_idx: [current_step, total_steps] or None
         Returns:
             best_preds:[batch_len, horse_len] - Best prediction per race based on lowest energy
 

@@ -67,7 +67,9 @@ class MCMCSampler(nn.Module):
 
         return predictions
 
-    def _mcmc_step(self, features: Tensor, predictions: Tensor, attention_mask: Tensor, step_idx: int | None) -> Tensor:
+    def _mcmc_step(
+        self, features: Tensor, predictions: Tensor, attention_mask: Tensor, step_idx: tuple[int, int] | None
+    ) -> Tensor:
         """
         Performs a single MCMC step: energy computation, gradient update, and regularization.
         """
@@ -100,7 +102,7 @@ class MCMCSampler(nn.Module):
         predictions = predictions - self.config.mcmc_step_size * energy_grad
 
         # --- Langevin Dynamics: Add noise (EBT regularization) ---
-        if self.training and self.langevin_noise_std > 0:
+        if self.training and float(self.langevin_noise_std) > 0:
             # Only add noise during training (not eval) if configured
             if not (self.config.no_langevin_during_eval and not self.training):
                 langevin_noise = torch.randn_like(predictions).detach() * self.langevin_noise_std
@@ -144,7 +146,8 @@ class MCMCSampler(nn.Module):
             mask_flat = mask_exp.reshape(num_variants * batch_size, horse_len)
 
             # Perform MCMC step
-            step_for_energy = mcmc_step if self.config.use_timestep_embeddings else None
+            step_for_energy = (mcmc_step, num_mcmc_steps) if self.config.use_timestep_embeddings else None
+
             predictions_flat = self._mcmc_step(
                 features=features_flat, predictions=predictions_flat, attention_mask=mask_flat, step_idx=step_for_energy
             )

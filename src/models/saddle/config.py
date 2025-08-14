@@ -14,6 +14,7 @@ class SADDLEConfig:
     num_variants: int = 3
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
     use_timestep_embeddings: bool = False
+    timestep_num_bins: int = 8
     softmax_temperature: float = 1.0
 
     # Langevin hyperparams
