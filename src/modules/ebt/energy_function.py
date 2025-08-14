@@ -23,6 +23,9 @@ class EnergyFunction(nn.Module):
         )
 
         self.t_film = nn.Sequential(nn.Linear(d_model, d_model), nn.SiLU(), nn.Linear(d_model, 2 * d_model))
+        self.t_film[-1].weight.data.zero_()
+        self.t_film[-1].bias.data.zero_()
+        self.film_strength = nn.Parameter(torch.tensor(0.0))
 
     def forward(self, features, candidate_predictions, step_idx: int | None = None):
         """
@@ -43,7 +46,11 @@ class EnergyFunction(nn.Module):
         if step_idx is not None:
             d_model = proj_features.shape[-1]
             t_emb = self._sinusoidal_timestep_embeddings(int(step_idx), d_model, proj_features.device)
+
             gamma, beta = self.t_film(t_emb).chunk(2, dim=-1)
+            gamma, beta = torch.tanh(gamma), torch.tanh(beta)
+
+            s = torch.sigmoid(self.film_strength) * 0.5 if hasattr(self, "film_strength") else 0.2
 
             # Broadcast to proj_features rank
             while gamma.dim() < proj_features.dim():
@@ -53,7 +60,7 @@ class EnergyFunction(nn.Module):
             gamma = gamma.expand(*proj_features.shape[:-1], -1)
             beta = beta.expand(*proj_features.shape[:-1], -1)
 
-            proj_features = proj_features * (1 + gamma) + beta
+            proj_features = proj_features * (1 + s * gamma) + s * beta
 
         # --- Multiplicative interaction ---
         interaction = proj_features * proj_predictions

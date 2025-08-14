@@ -5,11 +5,11 @@ from typing import Literal
 @dataclass
 class SADDLEConfig:
     # Notes
-    notes: str = "Switched over to the test set instead of val and eval."
+    notes: str = ""
 
     # EBT hyperparams
     mcmc_num_steps: int = 3
-    mcmc_step_size: float = 0.1
+    mcmc_step_size: float = 0.06
     entropy_beta: float = 0.01
     num_variants: int = 3
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
@@ -37,7 +37,7 @@ class SADDLEConfig:
     num_attention_heads: int = 8
     output_size: int = 1
     dropout: float = 0.3
-    label_smoothing: bool = False
+    label_smoothing: bool = True
 
     # Logging
     logging_mode: Literal["async", "debug"] = "debug"
