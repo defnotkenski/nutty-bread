@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 from src.models.saddle.config import SADDLEConfig
-from src.modules.ebt import EnergyFunction, MCMCSampler
+from .energy_function import EnergyFunction
+from .mcmc_sampler import MCMCSampler
 from torch import Tensor
 import torch.nn.functional as f
 
