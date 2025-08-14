@@ -13,7 +13,7 @@ class SADDLEConfig:
     entropy_beta: float = 0.01
     num_variants: int = 3
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
-    use_timestep_embeddings: bool = False
+    use_timestep_embeddings: bool = True
     timestep_num_bins: int = 8
     softmax_temperature: float = 1.0
 
