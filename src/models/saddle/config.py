@@ -13,7 +13,7 @@ class SADDLEConfig:
     entropy_beta: float = 0.01
     num_variants: int = 3
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
-    use_timestep_embeddings: bool = False
+    use_timestep_embeddings: bool = True
     softmax_temperature: float = 1.0
 
     # Langevin hyperparams
@@ -40,7 +40,7 @@ class SADDLEConfig:
     label_smoothing: bool = False
 
     # Logging
-    logging_mode: Literal["async", "debug"] = "async"
+    logging_mode: Literal["async", "debug"] = "debug"
     log_every_n_steps: int = 50
 
     # Training hyperparams
