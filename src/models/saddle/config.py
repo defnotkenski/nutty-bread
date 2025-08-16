@@ -5,7 +5,7 @@ from typing import Literal
 @dataclass
 class SADDLEConfig:
     # Notes
-    notes: str = "Timestep embedding A test."
+    notes: str = ""
 
     # EBT hyperparams
     mcmc_num_steps: int = 3
@@ -13,8 +13,6 @@ class SADDLEConfig:
     entropy_beta: float = 0.01
     num_variants: int = 3
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
-    use_timestep_embeddings: bool = False
-    timestep_num_bins: int = 8
     softmax_temperature: float = 1.0
 
     # Langevin hyperparams

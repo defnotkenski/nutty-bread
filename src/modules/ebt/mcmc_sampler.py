@@ -67,9 +67,7 @@ class MCMCSampler(nn.Module):
 
         return predictions
 
-    def _mcmc_step(
-        self, features: Tensor, predictions: Tensor, attention_mask: Tensor, step_idx: tuple[int, int] | None
-    ) -> Tensor:
+    def _mcmc_step(self, features: Tensor, predictions: Tensor, attention_mask: Tensor) -> Tensor:
         """
         Performs a single MCMC step: energy computation, gradient update, and regularization.
         """
@@ -78,7 +76,7 @@ class MCMCSampler(nn.Module):
         probs = torch.sigmoid(predictions)
 
         # --- Energy computation ---
-        energy_scores = self.energy_fn(features, probs.unsqueeze(-1), step_idx=step_idx)
+        energy_scores = self.energy_fn(features, probs.unsqueeze(-1))
         masked_energy = energy_scores * attention_mask.float()
 
         # --- Mean-based energy calculations ---
@@ -146,10 +144,8 @@ class MCMCSampler(nn.Module):
             mask_flat = mask_exp.reshape(num_variants * batch_size, horse_len)
 
             # Perform MCMC step
-            step_for_energy = (mcmc_step, num_mcmc_steps) if self.config.use_timestep_embeddings else None
-
             predictions_flat = self._mcmc_step(
-                features=features_flat, predictions=predictions_flat, attention_mask=mask_flat, step_idx=step_for_energy
+                features=features_flat, predictions=predictions_flat, attention_mask=mask_flat
             )
 
             # Reshape back to variants format
