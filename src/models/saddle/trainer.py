@@ -395,8 +395,8 @@ class ModelTrainer:
         for tau in u_thresholds:
             cov = sel_u_covered[tau] / total_races if total_races > 0 else 0.0
             acc = (sel_u_correct[tau] / sel_u_covered[tau]) if sel_u_covered[tau] > 0 else 0.0
-            key_acc = f"race_accuracy_mc_entropy_le_{str(tau).replace('.', '_')}"
-            key_cov = f"coverage_mc_entropy_le_{str(tau).replace('.', '_')}"
+            key_acc = f"Race Accuracy MCE {str(tau).replace('.', '_')}"
+            key_cov = f"Coverage MCE {str(tau).replace('.', '_')}"
             sel_metrics[key_acc] = acc
             sel_metrics[key_cov] = cov
 
@@ -461,7 +461,7 @@ class ModelTrainer:
             metrics_str = ", ".join([f"{k}: {v:.4f}" for k, v in selective.items()])
 
             console.print(
-                f"{status} Test | Race Accuracy: {test_race_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}, Threshold: {metrics_str}\n",
+                f"{status} Test | Race Accuracy: {test_race_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}, {metrics_str}\n",
                 style="info_text",
             )
 

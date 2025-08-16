@@ -36,7 +36,7 @@ class SADDLEConfig:
     num_attention_heads: int = 8
     output_size: int = 1
     dropout: float = 0.3
-    label_smoothing: bool = True
+    label_smoothing: bool = False
 
     # --- Logging ---
     logging_mode: Literal["async", "debug"] = "debug"
