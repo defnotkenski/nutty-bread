@@ -78,13 +78,13 @@ class FeatureProcessor:
         self.processed_df: pl.DataFrame | None = None
 
         self.target_type: str = target_type
-
-        feature_set_dataclass: FeatureSet = generate_train_features(lag_count=1, other_count=4)
-        self.feature_set: FeatureSet = feature_set_dataclass
+        self.feature_set: FeatureSet = generate_train_features(lag_count=1, other_count=4)
 
     @staticmethod
     def _build_prediction_safe_features(working_df: pl.DataFrame) -> pl.DataFrame:
-        """Features that can be calculated at prediction time"""
+        """
+        Features that can be calculated at prediction time.
+        """
 
         # ===== Add distance_furlongs column. =====
 
@@ -101,6 +101,15 @@ class FeatureProcessor:
             .rank(method="ordinal")
             .over(["race_date", "track_code", "race_number"])
             .alias("rank_in_odds")
+        )
+
+        # ===== Add rank_frac column. =====
+
+        working_df = working_df.with_columns(
+            pl.when(pl.col("field_size") > 1)
+            .then((1 - (pl.col("rank_in_odds") - 1) / (pl.col("field_size") - 1)))
+            .otherwise(pl.lit(1.0))
+            .alias("rank_in_odds_frac")
         )
 
         # ===== Add days_since_last_race column. =====
@@ -181,6 +190,13 @@ class FeatureProcessor:
 
         working_df = working_df.rename(
             {col: f"recent_0_{col.replace('_recent_0', '')}" for col in working_df.columns if col.endswith("_recent_0")}
+        )
+
+        working_df = working_df.with_columns(
+            pl.when(pl.col("recent_0_field_size") > 1)
+            .then(1 - (pl.col("recent_0_rank_in_odds") - 1) / (pl.col("recent_0_field_size") - 1))
+            .otherwise(pl.lit(1.0))
+            .alias("recent_0_rank_in_odds_frac")
         )
 
         return working_df

@@ -15,7 +15,8 @@ current_race:
 current_horse:
   # Current horse 01/05: current horse-level metadata. (4 features)
   rank_in_odds: 0
-  dollar_odds: 0.76
+#  dollar_odds: 0.76
+  rank_in_odds_frac: 0.85
   days_since_last_race: 27
   trainer_win_pct: 0.60
 
@@ -35,7 +36,8 @@ current_horse_lags:
 
   # Current horse 01/05: horse-level metadata lag 01/02. (4 features)
   recent_0_rank_in_odds: 0
-  recent_0_dollar_odds: 0.76
+#  recent_0_dollar_odds: 0.76
+  recent_0_rank_in_odds_frac: 0.85
   recent_0_days_since_last_race: 27
   recent_0_trainer_win_pct: 0.62
 

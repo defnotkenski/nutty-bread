@@ -117,8 +117,10 @@ class ModelTrainer:
     def _prepare_data(self, path_to_csv: Path):
         """
         Prepare the different datasets to be used throughout training, validation, and evaluation.
+
         NOTE: There are four different sets: train, val, eval, and test (test set is a combination of val and eval).
         """
+
         config = self.config
         preprocessed = preprocess_df(df_path=path_to_csv)
         dataset = SAINTDataset(preprocessed)
