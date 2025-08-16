@@ -4,10 +4,10 @@ from typing import Literal
 
 @dataclass
 class SADDLEConfig:
-    # Notes
+    # --- Notes ---
     notes: str = ""
 
-    # EBT hyperparams
+    # --- EBT hyperparams ---
     mcmc_num_steps: int = 3
     mcmc_step_size: float = 0.06
     entropy_beta: float = 0.01
@@ -15,21 +15,21 @@ class SADDLEConfig:
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
     softmax_temperature: float = 1.0
 
-    # Langevin hyperparams
+    # --- Langevin hyperparams ---
     langevin_dynamics_noise: float = 0.1  # Noise std for Langevin dynamics
     langevin_dynamics_noise_learnable: bool = False  # Make noise learnable
     no_langevin_during_eval: bool = True  # Disable noise during validation
 
-    # Memory Bakery Parameters
+    # --- Memory Bakery Parameters ---
     mcmc_memory_bakery: bool = True  # Enable memory bakery
     mcmc_memory_bakery_size: int = 192  # Buffer size
     mcmc_memory_bakery_sample_bs_percent: float = 0.5  # % of batch from buffer
 
-    # MCMC Randomization
+    # --- MCMC Randomization ---
     randomize_mcmc_num_steps: int = 1  # Max random variation in steps
     randomize_mcmc_num_steps_min: int = 2  # Min steps when randomizing
 
-    # Model hyperparams
+    # --- Model hyperparams ---
     learning_rate: float = 3e-4  # If using prodigy-plus, lr is automatically set to 1.0
     d_model: int = 64
     num_block_layers: int = 4
@@ -38,11 +38,11 @@ class SADDLEConfig:
     dropout: float = 0.3
     label_smoothing: bool = True
 
-    # Logging
+    # --- Logging ---
     logging_mode: Literal["async", "debug"] = "async"
     log_every_n_steps: int = 50
 
-    # Training hyperparams
+    # --- Training hyperparams ---
     disable_torch_compile: bool = False
     random_state: int = 777
     batch_size: int = 64
@@ -54,14 +54,14 @@ class SADDLEConfig:
     precision: str | None = None
     early_stopping: bool = False
 
-    # Attention hyperparams
+    # --- Attention hyperparams ---
     num_competitors: int = 4
 
-    # Dataloader hyperparams
+    # --- Dataloader hyperparams ---
     pin_memory: bool = True
     shuffle: bool = False
 
-    # Optimizer hyperparams
+    # --- Optimizer hyperparams ---
     optimizer: Literal["prodigy-plus", "adamw", "adamw-schedule-free"] = "adamw-schedule-free"
     prodigy_use_speed: bool = True
     prodigy_use_orthograd: bool = False
@@ -69,7 +69,12 @@ class SADDLEConfig:
     weight_decay: float = 0.01  # Automatically set to 0.0 if using prodigy's speed
     betas: tuple[float, float] = (0.9, 0.999)
 
-    # Scheduler hyperparams
+    # --- Scheduler hyperparams ---
     scheduler: Literal["cosine"] | None = "cosine"
     warmup_pct: float = 0.1
     min_lr_ratio: float = 0.1
+
+    # --- Validation hyperparams ---
+    mc_samples: int = 20
+    mc_use_dropout: bool = True
+    uncertainty_thresholds: tuple[float, ...] = (0.35,)

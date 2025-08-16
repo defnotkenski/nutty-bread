@@ -19,6 +19,7 @@ from tqdm import TqdmExperimentalWarning
 from src.models.saddle.saddle_model import SaddleModel
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
+import math
 
 warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
@@ -51,6 +52,64 @@ class ModelTrainer:
         # Set up signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
+
+    @staticmethod
+    def _enable_mc_dropout(model: SaddleModel):
+        # Turn on dropout layers while leaving the rest in eval mode.
+        for m in model.modules():
+            if isinstance(m, torch.nn.Dropout):
+                m.train()
+        return
+
+    @staticmethod
+    def _mc_uncertainty_entropy(race_stack: torch.Tensor) -> tuple[float, int]:
+        s, h = race_stack.shape
+        mean_p = race_stack.mean(dim=0)
+        pred = int(mean_p.argmax().item())
+        h_p = -float((mean_p * (mean_p + 1e-8).log()).sum().item())
+        h_max = math.log(h) if h > 1 else 1.0
+        norm_entropy = h_p / h_max if h_max > 0 else 0.0
+
+        return norm_entropy, pred
+
+    def _mc_race_probs(self, model: SaddleModel, batch, samples: int):
+        # Returns per-race stacks: list of tensors [S, H_race]
+        x, y, attention_mask, winner_indices = self._move_batch_to_device(batch)
+        model.eval()
+
+        if getattr(self.config, "mc_use_dropout", True):
+            self._enable_mc_dropout(model)
+
+        race_samples = None
+
+        with torch.no_grad():
+            for s in range(samples):
+                _, probs_flat, _ = model.compute_step((x, y, attention_mask, winner_indices), False)
+
+                batch_size = attention_mask.shape[0]
+                prob_idx = 0
+                per_race = []
+
+                for r in range(batch_size):
+                    mask = attention_mask[r].bool()
+                    num_horses = int(mask.sum().item())
+
+                    if num_horses > 1:
+                        per_race.append(probs_flat[prob_idx : prob_idx + num_horses].detach().cpu())
+                    else:
+                        per_race.append(torch.tensor([1.0]))
+
+                    prob_idx += num_horses
+
+                if s == 0:
+                    race_samples = [[per_race[r]] for r in range(batch_size)]
+                else:
+                    for r in range(batch_size):
+                        race_samples[r].append(per_race[r])
+
+        race_samples = [torch.stack(r_list, dim=0) for r_list in race_samples]
+
+        return race_samples, winner_indices.detach().cpu()
 
     def _signal_handler(self, _signum, _frame):
         console.print("Received graceful shutdown signal...", style="bold magenta italic")
@@ -302,7 +361,46 @@ class ModelTrainer:
         else:
             race_accuracy = 0.0
 
-        return avg_loss, race_accuracy
+        # --- Monte Carlo selective metrics (predictive entropy) ---
+
+        u_thresholds = self.config.uncertainty_thresholds
+        mc_s = self.config.mc_samples
+
+        use_mc = mc_s > 0 and self.config.mc_use_dropout
+
+        sel_u_correct = {tau: 0 for tau in u_thresholds}
+        sel_u_covered = {tau: 0 for tau in u_thresholds}
+        total_races = 0
+
+        if use_mc:
+            for batch in dataloader:
+                race_stacks, winner_indices = self._mc_race_probs(model, batch, samples=mc_s)
+                for r, stack in enumerate(race_stacks):
+                    h = stack.shape[1]
+                    total_races += 1
+
+                    if h <= 1:
+                        continue
+
+                    u, pred = self._mc_uncertainty_entropy(stack)
+                    actual = int(winner_indices[r].item())
+
+                    for tau in u_thresholds:
+                        if u <= tau:
+                            sel_u_covered[tau] += 1
+                            if pred == actual:
+                                sel_u_correct[tau] += 1
+
+        sel_metrics = {}
+        for tau in u_thresholds:
+            cov = sel_u_covered[tau] / total_races if total_races > 0 else 0.0
+            acc = (sel_u_correct[tau] / sel_u_covered[tau]) if sel_u_covered[tau] > 0 else 0.0
+            key_acc = f"race_accuracy_mc_entropy_le_{str(tau).replace('.', '_')}"
+            key_cov = f"coverage_mc_entropy_le_{str(tau).replace('.', '_')}"
+            sel_metrics[key_acc] = acc
+            sel_metrics[key_cov] = cov
+
+        return avg_loss, race_accuracy, sel_metrics
 
     def train_model(self, path_to_csv: Path) -> None:
         console.print(f"\n--- Starting Model Training ---", style="info_title")
@@ -348,39 +446,22 @@ class ModelTrainer:
 
             status = "Initial" if epoch == 0 else f"Epoch: {epoch}"
 
-            # --- Validation Block ---
-            # epoch_avg_loss, epoch_race_accuracy = self._validate_model(model, dataloader=val_dataloader)
-
-            # --- Log validation metrics ---
-            # self.mclogger.set_context("val")
-            # self.mclogger.log("loss", epoch_avg_loss)
-            # self.mclogger.log("race_accuracy", epoch_race_accuracy)
-
-            # --- Log validation metrics to the console too ---
-            # print(f"{status} Validation | Race Accuracy: {epoch_race_accuracy:.4f}, Avg. Loss: {epoch_avg_loss:.4f}")
-
-            # --- Evaluation Block ---
-            # eval_avg_loss, eval_race_accuracy = self._validate_model(model, dataloader=eval_dataloader)
-
-            # --- Log Evaluation Metrics ---
-            # self.mclogger.set_context("eval")
-            # self.mclogger.log("loss", eval_avg_loss)
-            # self.mclogger.log("race_accuracy", eval_race_accuracy)
-
-            # --- Log evaluation metrics to the console too ---
-            # print(f"{status} Evaluation | Race Accuracy: {eval_race_accuracy:.4f}, Avg. Loss: {eval_avg_loss:.4f}\n")
-
             # --- Test Block ---
-            test_avg_loss, test_race_accuracy = self._validate_model(model, dataloader=test_dataloader)
+            test_avg_loss, test_race_accuracy, selective = self._validate_model(model, dataloader=test_dataloader)
 
             # --- Log test metrics ---
             self.mclogger.set_context("test")
             self.mclogger.log("loss", test_avg_loss)
             self.mclogger.log("race_accuracy", test_race_accuracy)
 
+            for k, v in selective.items():
+                self.mclogger.log(k, v)
+
             # --- Log test metrics to the console too ---
+            metrics_str = ", ".join([f"{k}: {v:.4f}" for k, v in selective.items()])
+
             console.print(
-                f"{status} Test | Race Accuracy: {test_race_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}\n",
+                f"{status} Test | Race Accuracy: {test_race_accuracy:.4f}, Avg. Loss: {test_avg_loss:.4f}, Threshold: {metrics_str}\n",
                 style="info_text",
             )
 
