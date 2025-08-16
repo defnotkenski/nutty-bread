@@ -39,7 +39,7 @@ class SADDLEConfig:
     label_smoothing: bool = True
 
     # --- Logging ---
-    logging_mode: Literal["async", "debug"] = "async"
+    logging_mode: Literal["async", "debug"] = "debug"
     log_every_n_steps: int = 50
 
     # --- Training hyperparams ---
@@ -75,6 +75,6 @@ class SADDLEConfig:
     min_lr_ratio: float = 0.1
 
     # --- Validation hyperparams ---
-    mc_samples: int = 20
+    mc_samples: int = 10
     mc_use_dropout: bool = True
     uncertainty_thresholds: tuple[float, ...] = (0.35,)

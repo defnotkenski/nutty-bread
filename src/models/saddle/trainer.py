@@ -82,30 +82,29 @@ class ModelTrainer:
 
         race_samples = None
 
-        with torch.no_grad():
-            for s in range(samples):
-                _, probs_flat, _ = model.compute_step((x, y, attention_mask, winner_indices), False)
+        for s in range(samples):
+            _, probs_flat, _ = model.compute_step((x, y, attention_mask, winner_indices), False)
 
-                batch_size = attention_mask.shape[0]
-                prob_idx = 0
-                per_race = []
+            batch_size = attention_mask.shape[0]
+            prob_idx = 0
+            per_race = []
 
-                for r in range(batch_size):
-                    mask = attention_mask[r].bool()
-                    num_horses = int(mask.sum().item())
+            for r in range(batch_size):
+                mask = attention_mask[r].bool()
+                num_horses = int(mask.sum().item())
 
-                    if num_horses > 1:
-                        per_race.append(probs_flat[prob_idx : prob_idx + num_horses].detach().cpu())
-                    else:
-                        per_race.append(torch.tensor([1.0]))
-
-                    prob_idx += num_horses
-
-                if s == 0:
-                    race_samples = [[per_race[r]] for r in range(batch_size)]
+                if num_horses > 1:
+                    per_race.append(probs_flat[prob_idx : prob_idx + num_horses].detach().cpu())
                 else:
-                    for r in range(batch_size):
-                        race_samples[r].append(per_race[r])
+                    per_race.append(torch.tensor([1.0]))
+
+                prob_idx += num_horses
+
+            if s == 0:
+                race_samples = [[per_race[r]] for r in range(batch_size)]
+            else:
+                for r in range(batch_size):
+                    race_samples[r].append(per_race[r])
 
         race_samples = [torch.stack(r_list, dim=0) for r_list in race_samples]
 
@@ -375,6 +374,7 @@ class ModelTrainer:
         if use_mc:
             for batch in dataloader:
                 race_stacks, winner_indices = self._mc_race_probs(model, batch, samples=mc_s)
+
                 for r, stack in enumerate(race_stacks):
                     h = stack.shape[1]
                     total_races += 1
