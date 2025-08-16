@@ -397,8 +397,8 @@ class ModelTrainer:
         for tau in u_thresholds:
             cov = sel_u_covered[tau] / total_races if total_races > 0 else 0.0
             acc = (sel_u_correct[tau] / sel_u_covered[tau]) if sel_u_covered[tau] > 0 else 0.0
-            key_acc = f"Race Accuracy MCE ({str(tau).replace('.', '_')})"
-            key_cov = f"Coverage MCE ({str(tau).replace('.', '_')})"
+            key_acc = f"Race Accuracy MCE"
+            key_cov = f"Coverage MCE"
             sel_metrics[key_acc] = acc
             sel_metrics[key_cov] = cov
 

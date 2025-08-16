@@ -39,7 +39,7 @@ class SADDLEConfig:
     label_smoothing: bool = False
 
     # --- Logging ---
-    logging_mode: Literal["async", "debug"] = "debug"
+    logging_mode: Literal["async", "debug"] = "async"
     log_every_n_steps: int = 50
 
     # --- Training hyperparams ---
