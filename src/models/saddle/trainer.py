@@ -1,11 +1,12 @@
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-from src.models.saddle.data_processing import preprocess_df, SAINTDataset, PreProcessor
+from src.data.pipeline.preprocess import preprocess_df, Preprocessed
+from src.models.saddle.saddle_dataset import SaddleDataset
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from src.models.saddle.config import SADDLEConfig
-from src.models.saddle.data_processing import collate_races
+from src.data.collate import collate_races
 from prodigyplus import ProdigyPlusScheduleFree
 from src.commons.logger import McLogger
 from torch.optim.lr_scheduler import OneCycleLR
@@ -122,8 +123,8 @@ class ModelTrainer:
         """
 
         config = self.config
-        preprocessed = preprocess_df(df_path=path_to_csv)
-        dataset = SAINTDataset(preprocessed)
+        preprocessed = preprocess_df(path_to_csv)
+        dataset = SaddleDataset(preprocessed)
 
         train_idx, test_idx = train_test_split(
             range(len(dataset)), test_size=0.1, shuffle=config.shuffle, random_state=config.random_state
@@ -251,7 +252,7 @@ class ModelTrainer:
 
         return optimizer, scheduler
 
-    def _setup_model(self, preprocessed: PreProcessor) -> SaddleModel:
+    def _setup_model(self, preprocessed: Preprocessed) -> SaddleModel:
         config = self.config
         # pos_weight = calc_pos_weight(preprocessed)
 

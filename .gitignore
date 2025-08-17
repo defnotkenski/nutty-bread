@@ -192,6 +192,7 @@ wandb/
 mlruns/
 .mlflow/
 
+
 # Data files
 *.csv
 !datasets/sample_horses_v2.csv
@@ -201,7 +202,6 @@ mlruns/
 *.parquet
 *.feather
 *.hdf5
-data/
 datasets/deprecated
 raw_data/
 processed_data/

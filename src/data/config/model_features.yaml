@@ -1,0 +1,70 @@
+current_race:
+  - track_code
+  - race_type
+  - distance_furlongs
+  - race_purse
+  - field_size
+  - course_surface
+  - track_conditions
+#  - class_rating
+#  - runup_distance
+#  - rail_distance
+#  - sealed
+
+current_horse:
+  - rank_in_odds
+  - rank_in_odds_frac
+  - days_since_last_race
+  - trainer_win_pct
+#  - dollar_odds
+
+current_horse_lags:
+  - recent_0_track_code
+  - recent_0_race_type
+  - recent_0_distance_furlongs
+  - recent_0_race_purse
+  - recent_0_field_size
+  - recent_0_course_surface
+  - recent_0_track_conditions
+#  - recent_0_class_rating
+#  - recent_0_runup_distance
+#  - recent_0_rail_distance
+#  - recent_0_sealed
+  - recent_0_rank_in_odds
+  - recent_0_rank_in_odds_frac
+  - recent_0_days_since_last_race
+  - recent_0_trainer_win_pct
+#  - recent_0_dollar_odds
+  - recent_0_race_speed_vs_par # Final time of winner - par time (in seconds or lengths).
+  - recent_0_horse_speed_vs_par # Time of favorite - par time.
+  - recent_0_horse_time_vs_winner # Direct matchup: how the favorite did compared to the horse that actually won. Time of favorite - time of winner.
+  - recent_0_start_position
+  - recent_0_point_of_call_1_position
+  - recent_0_point_of_call_1_lengths
+  - recent_0_point_of_call_5_position
+  - recent_0_point_of_call_5_lengths
+  - recent_0_point_of_call_final_position
+  - recent_0_point_of_call_final_lengths
+  - recent_0_speed_rating # Straightforward. Higher is better.
+  - recent_0_speed_rating_vs_field_avg # Shows whether the horse overperformed or underperformed relative to peers. Horse_rating - avg_field_rating.
+  - recent_0_speed_rating_vs_winner # How close the favorite was to the top performance. Speed_rating - winner_speed_rating.
+
+other_horse:
+  - other_X_rank_in_odds
+  - other_X_dollar_odds
+  - other_X_days_since_last_race
+  - other_X_trainer_win_pct
+
+other_horse_lags:
+  - other_X_recent_X_course_surface
+  - other_X_recent_X_distance_furlongs
+  - other_X_recent_X_dollar_odds
+  - other_X_recent_X_trainer_win_pct
+  - other_X_recent_X_race_speed_vs_par
+  - other_X_recent_X_horse_speed_vs_par
+  - other_X_recent_X_speed_rating
+  - other_X_recent_X_speed_rating_vs_field_avg
+  - other_X_recent_X_speed_rating_vs_winner
+  - other_X_recent_X_start_position
+  - other_X_recent_X_official_final_position
+#  - other_X_recent_X_class_rating
