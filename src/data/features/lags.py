@@ -35,6 +35,7 @@ def add_lags(feature_df: pl.DataFrame, lookup_df: pl.DataFrame | None = None) ->
         "rail_distance",
         "sealed",
         "rank_in_odds",
+        "rank_in_odds_frac",
         "days_since_last_race",
         "trainer_win_pct",
         "start_position",

@@ -35,9 +35,16 @@ def build_race_metadata(df: pl.DataFrame, target_col: str = "target") -> RaceMet
     # ======
 
     winner_indices: list[int] = []
-
     for _, g in groups:
-        arr = g[target_col].to_numpy()
-        winner_indices.append(int(arr.argmax()) if len(arr) > 0 else 0)
+        # arr = g[target_col].to_numpy()
+        # winner_indices.append(int(arr.argmax()) if len(arr) > 0 else 0)
+
+        assert len(g) != 0, f"Length of group is 0."
+
+        # Choose the horse with the best (lowest) official_final_position.
+        # Fill nulls with a large sentinel to avoid selecting missing values.
+        pos_series = g["official_final_position"].fill_null(1_000_000)
+        idx = int(pos_series.arg_min())
+        winner_indices.append(idx)
 
     return RaceMetadata(race_boundaries=race_boundaries, winner_indices=winner_indices)

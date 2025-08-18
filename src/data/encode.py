@@ -3,7 +3,7 @@ import numpy as np
 import polars as pl
 import torch
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from src.data.split import build_race_metadata, RaceMetadata
+from src.data.metadata import build_race_metadata, RaceMetadata
 
 
 @dataclass(frozen=True)

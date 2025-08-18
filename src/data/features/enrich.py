@@ -16,7 +16,8 @@ def build_results_derived_features(df: pl.DataFrame) -> FeatureFrame:
     Add results-derived features
     """
 
-    # Trainer cumulative stats
+    # === Trainer cumulative stats ===
+
     df = df.with_columns(
         (
             pl.col("official_final_position")
@@ -44,8 +45,8 @@ def build_results_derived_features(df: pl.DataFrame) -> FeatureFrame:
         .alias("trainer_win_pct")
     )
 
-    # Results-derived feature calculations (leakage-safe)
-    # race_speed_vs_par = win_time - par_time (when par_time != 0.0)
+    # === race_speed_vs_par = win_time - par_time (when par_time != 0.0) ===
+
     df = df.with_columns(
         pl.when(pl.col("par_time") != 0.00)
         .then(pl.col("win_time") - pl.col("par_time"))
@@ -53,29 +54,35 @@ def build_results_derived_features(df: pl.DataFrame) -> FeatureFrame:
         .alias("race_speed_vs_par")
     )
 
-    # Compute horse_finish_time from final beaten lengths (1 length ~ 0.2s)
+    # === Compute horse_finish_time from final beaten lengths (1 length ~ 0.2s) ===
+
     length_seconds = 0.2
     df = df.with_columns(
         (pl.col("point_of_call_final_lengths") * length_seconds + pl.col("win_time")).alias("horse_finish_time")
     )
 
-    # horse_speed_vs_par = horse_finish_time - par_time
+    # === horse_speed_vs_par = horse_finish_time - par_time ===
+
     df = df.with_columns((pl.col("horse_finish_time") - pl.col("par_time")).alias("horse_speed_vs_par"))
 
-    # horse_time_vs_winner = horse_finish_time - win_time
+    # === horse_time_vs_winner = horse_finish_time - win_time ===
+
     df = df.with_columns((pl.col("horse_finish_time") - pl.col("win_time")).alias("horse_time_vs_winner"))
 
-    # field_avg_speed_rating (average of others in the race)
+    # === field_avg_speed_rating (average of others in the race) ===
+
     df = df.with_columns(
         ((pl.col("speed_rating").sum() - pl.col("speed_rating")) / (pl.len() - 1))
         .over(["race_date", "track_code", "race_number"])
         .alias("field_avg_speed_rating")
     )
 
-    # speed_rating_vs_field_avg
+    # === speed_rating_vs_field_avg ===
+
     df = df.with_columns((pl.col("speed_rating") - pl.col("field_avg_speed_rating")).alias("speed_rating_vs_field_avg"))
 
-    # speed_rating_vs_winner
+    # === speed_rating_vs_winner ===
+
     df = df.with_columns(
         pl.col("speed_rating")
         .get(pl.col("official_final_position").arg_min())
