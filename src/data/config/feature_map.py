@@ -7,7 +7,7 @@ DEFAULT_SECTIONS = ("current_race", "current_horse", "current_horse_lags")
 OPPONENT_SECTIONS = ("other_horse", "other_horse_lags")
 
 
-def _load_yaml_features(yaml_path: Path) -> dict:
+def load_yaml_features(yaml_path: Path) -> dict:
     with open(yaml_path, "r") as f:
         data = yaml.safe_load(f)
 
@@ -28,7 +28,7 @@ def build_feature_map_from_yaml(
     """
     df = df.sort(["race_date", "track_code", "race_number"])
 
-    features_dict = _load_yaml_features(yaml_path)
+    features_dict = load_yaml_features(yaml_path)
     sections = list(DEFAULT_SECTIONS)
     if include_opponents:
         sections += list(OPPONENT_SECTIONS)
