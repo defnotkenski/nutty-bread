@@ -23,7 +23,6 @@ def add_lags(feature_df: pl.DataFrame, lookup_df: pl.DataFrame | None = None) ->
     # ======
 
     desired_cols = [
-        "track_code",
         "race_type",
         "distance_furlongs",
         "race_purse",

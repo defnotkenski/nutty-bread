@@ -1,5 +1,5 @@
 current_race:
-  - track_code
+#  - track_code
   - race_type
   - distance_furlongs
   - race_purse
@@ -19,7 +19,7 @@ current_horse:
 #  - dollar_odds
 
 current_horse_lags:
-  - recent_0_track_code
+#  - recent_0_track_code
   - recent_0_race_type
   - recent_0_distance_furlongs
   - recent_0_race_purse
