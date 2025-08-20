@@ -187,19 +187,23 @@ class SaddleModel(nn.Module):
         all_step_predictions = self(x, attention_mask)
         num_steps, batch_size, horse_len, _ = all_step_predictions.shape
 
-        total_loss = 0
-        final_probs_flat = None
-        y_flat = None
+        device = attention_mask.device
+        total_loss: Tensor = torch.tensor(0.0, device=device)
+        contributing_steps = 0
+        final_probs_flat: Tensor = torch.empty(0, device=device, dtype=torch.float32)
+        y_flat: Tensor = torch.empty(0, device=device, dtype=torch.float32)
 
         # Compute loss for each MCMC step
         for step_idx in range(num_steps):
             step_probs = all_step_predictions[step_idx].squeeze(-1)  # [batch_size, horse_len]
-            step_loss = 0
+            step_loss: Tensor = torch.tensor(0.0, device=device)
+            valid_races = 0
 
             # Process each race seperately for cross-entropy
             for race_idx in range(batch_size):
                 horse_mask = attention_mask[race_idx].bool()
-                num_horses = horse_mask.sum().int()
+                # num_horses = horse_mask.sum().int()
+                num_horses = int(horse_mask.sum().item())
 
                 # Skip races with < 2 horses
                 if num_horses < 2:
@@ -235,10 +239,13 @@ class SaddleModel(nn.Module):
                         race_loss = -torch.log(race_probs[winner_indices[race_idx]] + 1e-8)
 
                 step_loss += race_loss
+                valid_races += 1
 
             # Average loss over races in batch
-            step_loss = step_loss / batch_size if batch_size > 0 else step_loss
-            total_loss += step_loss
+            if valid_races > 0:
+                step_loss = step_loss / valid_races
+                total_loss += step_loss
+                contributing_steps += 1
 
             # Store final step results for metrics
             if step_idx == num_steps - 1:
@@ -247,7 +254,7 @@ class SaddleModel(nn.Module):
                 final_probs_flat = step_probs[valid_mask]
                 y_flat = y[valid_mask]
 
-        avg_loss = total_loss / num_steps
+        avg_loss: Tensor = total_loss / (contributing_steps if contributing_steps > 0 else 1)
         return avg_loss, final_probs_flat, y_flat
 
     def to(self, device: torch.device):

@@ -355,7 +355,8 @@ class ModelTrainer:
 
             for race_idx in range(batch_size):
                 mask = attention_mask[race_idx].bool()
-                num_horses = mask.sum().int()
+                # num_horses = mask.sum().int()
+                num_horses = int(mask.sum().item())
 
                 if num_horses > 1:
                     race_probs = probs[prob_idx : prob_idx + num_horses]
@@ -411,10 +412,10 @@ class ModelTrainer:
 
                 for r, stack in enumerate(race_stacks):
                     h = stack.shape[1]
-                    total_races += 1
-
                     if h <= 1:
                         continue
+
+                    total_races += 1
 
                     u, pred = self._mc_uncertainty_entropy(stack)
                     for tau in u_thresholds:
