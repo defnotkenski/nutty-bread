@@ -29,6 +29,8 @@ class Preprocessed:
     categorical_cardinalities: list[int]
     race_boundaries: list[tuple[int, int]]
     winner_indices: torch.Tensor
+    top2_indices: list[list[int]]
+    top3_indices: list[list[int]]
 
 
 def encode_to_tensors(df: pl.DataFrame, fmap: FeatureMap) -> Preprocessed:
@@ -123,4 +125,6 @@ def encode_to_tensors(df: pl.DataFrame, fmap: FeatureMap) -> Preprocessed:
         categorical_cardinalities=cat_cardinalities,
         race_boundaries=meta.race_boundaries,
         winner_indices=torch.tensor(meta.winner_indices, dtype=torch.long),
+        top2_indices=meta.top2_indices,
+        top3_indices=meta.top3_indices,
     )

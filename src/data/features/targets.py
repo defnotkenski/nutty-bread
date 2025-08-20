@@ -20,7 +20,7 @@ def add_target(df: pl.DataFrame, target_type: Literal["win", "show", "place"]) -
 
     if target_type == "win":
         df = df.with_columns((pl.col("official_final_position") == 1).cast(pl.Int64).alias(target_col))
-    elif target_type == "show":
+    elif target_type == "place":
         df = df.with_columns((pl.col("official_final_position") <= 2).cast(pl.Int64).alias(target_col))
     else:
         df = df.with_columns((pl.col("official_final_position") <= 3).cast(pl.Int64).alias(target_col))

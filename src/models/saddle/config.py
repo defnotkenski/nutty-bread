@@ -53,6 +53,7 @@ class SADDLEConfig:
     enable_checkpointing: bool = False
     precision: str | None = None
     early_stopping: bool = False
+    target_type: Literal["win", "place", "show"] = "win"
 
     # --- Attention hyperparams ---
     num_competitors: int = 4

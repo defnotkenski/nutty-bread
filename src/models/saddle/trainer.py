@@ -81,8 +81,22 @@ class ModelTrainer:
         if getattr(self.config, "mc_use_dropout", True):
             self._enable_mc_dropout(model)
 
-        race_samples = None
+        batch_size = attention_mask.shape[0]
 
+        # Compute per-race positives once from y/mask
+        pos_indices = []
+        for r in range(batch_size):
+            mask = attention_mask[r].bool()
+            num_horses = int(mask.sum().item())
+            if num_horses > 1:
+                y_race = y[r][mask]
+                positives = (y_race > 0.5).nonzero(as_tuple=False).flatten().tolist()
+            else:
+                positives = [0]
+
+            pos_indices.append(positives)
+
+        race_samples = None
         for s in range(samples):
             _, probs_flat, _ = model.compute_step((x, y, attention_mask, winner_indices), False)
 
@@ -109,7 +123,7 @@ class ModelTrainer:
 
         race_samples = [torch.stack(r_list, dim=0) for r_list in race_samples]
 
-        return race_samples, winner_indices.detach().cpu()
+        return race_samples, winner_indices.detach().cpu(), pos_indices
 
     def _signal_handler(self, _signum, _frame):
         console.print("Received graceful shutdown signal...", style="bold magenta italic")
@@ -123,7 +137,7 @@ class ModelTrainer:
         """
 
         config = self.config
-        preprocessed = preprocess_df(path_to_csv)
+        preprocessed = preprocess_df(path_to_csv, target_type=self.config.target_type)
         dataset = SaddleDataset(preprocessed)
 
         train_idx, test_idx = train_test_split(
@@ -347,19 +361,34 @@ class ModelTrainer:
                     race_probs = probs[prob_idx : prob_idx + num_horses]
                     predicted_winner = race_probs.argmax().item()
                     race_predictions.append(predicted_winner)
+
+                    if self.config.target_type == "win":
+                        # Store scalar winner index
+                        race_actual.append(int(winner_indices[race_idx].item()))
+                    else:
+                        # Store list of positive indices (place/show)
+                        y_race = y[race_idx][mask]
+                        positives = (y_race > 0.5).nonzero(as_tuple=False).flatten().tolist()
+                        race_actual.append(positives)
+
                 else:
                     race_predictions.append(0)
+                    race_actual.append(0 if self.config.target_type == "win" else [0])
 
                 prob_idx += num_horses
 
-            race_actual.extend(winner_indices.cpu().tolist())
+            # race_actual.extend(winner_indices.cpu().tolist())
 
         # === Calculate metrics ===
 
         avg_loss = sum(all_losses) / len(all_losses)
 
         if len(race_predictions) > 0:
-            correct_races = sum(1 for pred, actual in zip(race_predictions, race_actual) if pred == actual)
+            if self.config.target_type == "win":
+                correct_races = sum(1 for pred, actual in zip(race_predictions, race_actual) if pred == actual)
+            else:
+                correct_races = sum(1 for pred, positives in zip(race_predictions, race_actual) if pred in positives)
+
             race_accuracy = correct_races / len(race_predictions)
         else:
             race_accuracy = 0.0
@@ -378,7 +407,7 @@ class ModelTrainer:
 
         if use_mc:
             for batch in dataloader:
-                race_stacks, winner_indices = self._mc_race_probs(model, batch, samples=mc_s)
+                race_stacks, winner_indices, pos_indices = self._mc_race_probs(model, batch, samples=mc_s)
 
                 for r, stack in enumerate(race_stacks):
                     h = stack.shape[1]
@@ -388,12 +417,18 @@ class ModelTrainer:
                         continue
 
                     u, pred = self._mc_uncertainty_entropy(stack)
-                    actual = int(winner_indices[r].item())
-
                     for tau in u_thresholds:
                         if u <= tau:
                             sel_u_covered[tau] += 1
-                            if pred == actual:
+
+                            if self.config.target_type == "win":
+                                actual = int(winner_indices[r].item())
+                                correct = pred == actual
+                            else:
+                                positives = pos_indices[r]
+                                correct = pred in positives
+
+                            if correct:
                                 sel_u_correct[tau] += 1
 
         sel_metrics = {}

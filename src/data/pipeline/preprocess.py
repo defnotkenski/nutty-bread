@@ -8,7 +8,7 @@ from src.data.encode import encode_to_tensors, Preprocessed
 from src.data.config.feature_map import build_feature_map_from_yaml
 
 
-def preprocess_df(path: Path, target_type: Literal["win", "show", "place"] = "win") -> Preprocessed:
+def preprocess_df(path: Path, target_type: Literal["win", "show", "place"]) -> Preprocessed:
     """Full preprocessing pipeline: CSV → features → label → tensors + race metadata."""
     raw = load_raw_frame(path).df
 

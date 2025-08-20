@@ -208,19 +208,32 @@ class SaddleModel(nn.Module):
                 # Get race probabilities (already softmaxed from forward)
                 race_probs = step_probs[race_idx][horse_mask]
 
-                # Create one-hot target from winner index
-                race_target = torch.zeros(num_horses, device=step_probs.device)
-                race_target[winner_indices[race_idx]] = 1.0
+                if self.config.target_type == "win":
+                    # Create one-hot target from winner index
+                    race_target = torch.zeros(num_horses, device=step_probs.device)
+                    race_target[winner_indices[race_idx]] = 1.0
 
-                if self.config.label_smoothing and apply_label_smoothing:
-                    # Decreasing label smoothing: stronger at first step, weaker at final step
-                    smoothing_factor = 0.1 * (num_steps - step_idx) / num_steps
-                    race_target = race_target * (1 - smoothing_factor) + smoothing_factor / num_horses
+                    if self.config.label_smoothing and apply_label_smoothing:
+                        # Decreasing label smoothing: stronger at first step, weaker at final step
+                        smoothing_factor = 0.1 * (num_steps - step_idx) / num_steps
+                        race_target = race_target * (1 - smoothing_factor) + smoothing_factor / num_horses
 
-                # Compute cross-entropy loss for this race
-                # Use log probabilities to avoid numerical issues
-                log_probs = torch.log(race_probs + 1e-8)
-                race_loss = -torch.sum(race_target * log_probs)
+                    # Compute cross-entropy loss for this race
+                    # Use log probabilities to avoid numerical issues
+                    log_probs = torch.log(race_probs + 1e-8)
+                    race_loss = -torch.sum(race_target * log_probs)
+
+                else:
+                    # Place/Show: set-based loss
+                    y_race = y[race_idx][horse_mask]
+                    pos_mask = y_race > 0.5
+                    if pos_mask.any():
+                        p_sum = race_probs[pos_mask].sum()
+                        race_loss = -torch.log(p_sum + 1e-8)
+                    else:
+                        # Defensive fallback
+                        race_loss = -torch.log(race_probs[winner_indices[race_idx]] + 1e-8)
+
                 step_loss += race_loss
 
             # Average loss over races in batch
