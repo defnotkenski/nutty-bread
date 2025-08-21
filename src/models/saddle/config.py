@@ -8,16 +8,16 @@ class SADDLEConfig:
     notes: str = ""
 
     # --- EBT hyperparams ---
-    mcmc_num_steps: int = 3
+    mcmc_num_steps: int = 4
     mcmc_step_size: float = 0.06
     entropy_beta: float = 0.01
     num_variants: int = 3
     variant_selection: Literal["lowest_energy"] = "lowest_energy"
-    softmax_temperature: float = 1.0
+    softmax_temperature: float = 0.9
 
     # --- Langevin hyperparams ---
-    langevin_dynamics_noise: float = 0.1  # Noise std for Langevin dynamics
-    langevin_dynamics_noise_learnable: bool = False  # Make noise learnable
+    langevin_dynamics_noise: float = 0.05  # Noise std for Langevin dynamics
+    langevin_dynamics_noise_learnable: bool = True  # Make noise learnable
     no_langevin_during_eval: bool = True  # Disable noise during validation
 
     # --- Memory Bakery Parameters ---
@@ -31,7 +31,7 @@ class SADDLEConfig:
 
     # --- Model hyperparams ---
     learning_rate: float = 3e-4  # If using prodigy-plus, lr is automatically set to 1.0
-    d_model: int = 64
+    d_model: int = 128
     num_block_layers: int = 4
     num_attention_heads: int = 8
     output_size: int = 1
@@ -45,7 +45,7 @@ class SADDLEConfig:
     # --- Training hyperparams ---
     disable_torch_compile: bool = False
     random_state: int = 777
-    batch_size: int = 64
+    batch_size: int = 128
     num_workers: int = 6
     accumulate_grad_batches: int = 1
     gradient_clip_val: float | None = 1.0
@@ -76,6 +76,6 @@ class SADDLEConfig:
     min_lr_ratio: float = 0.1
 
     # --- Validation hyperparams ---
-    mc_samples: int = 10
+    mc_samples: int = 20
     mc_use_dropout: bool = True
-    uncertainty_thresholds: tuple[float, ...] = (0.35,)
+    uncertainty_thresholds: tuple[float, ...] = (0.30,)
