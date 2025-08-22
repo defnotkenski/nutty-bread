@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset
-from src.data.pipeline.preprocess import Preprocessed
+from src.data.encode import Preprocessed
 
 
 class SaddleDataset(Dataset):

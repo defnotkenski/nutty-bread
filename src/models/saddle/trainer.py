@@ -1,7 +1,7 @@
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-from src.data.pipeline.preprocess import preprocess_df, Preprocessed
+from src.data.pipeline.preprocess import preprocess_df
 from src.models.saddle.saddle_dataset import SaddleDataset
 from pathlib import Path
 from sklearn.model_selection import train_test_split
@@ -21,6 +21,8 @@ from src.models.saddle.saddle_model import SaddleModel
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 import math
+from src.data.metadata import build_race_metadata
+from src.data.encode import encode_to_tensors, Preprocessed
 
 warnings.filterwarnings("ignore", category=TqdmExperimentalWarning)
 
@@ -137,21 +139,39 @@ class ModelTrainer:
         """
 
         config = self.config
-        preprocessed = preprocess_df(path_to_csv, target_type=self.config.target_type)
-        dataset = SaddleDataset(preprocessed)
+
+        labeled_df, fmap = preprocess_df(path_to_csv, target_type=self.config.target_type)
+        meta = build_race_metadata(labeled_df, target_col=fmap.target)
+        num_races = len(meta.race_boundaries)
+        all_race_indices = list(range(num_races))
 
         train_idx, test_idx = train_test_split(
-            range(len(dataset)), test_size=0.1, shuffle=config.shuffle, random_state=config.random_state
+            all_race_indices, test_size=0.1, shuffle=config.shuffle, random_state=config.random_state
         )
         validate_idx, eval_idx = train_test_split(
             test_idx, test_size=0.5, shuffle=config.shuffle, random_state=config.random_state
         )
 
+        preprocessed = encode_to_tensors(labeled_df, fmap, train_race_indices=train_idx)
+        dataset = SaddleDataset(preprocessed)
+
+        def race_to_row_indices(race_indices, race_boundaries):
+            row_indices = []
+            for r in race_indices:
+                s, e = race_boundaries[r]
+                row_indices.extend(range(s, e))
+
+            return row_indices
+
+        train_row_idx = race_to_row_indices(train_idx, meta.race_boundaries)
+        validate_row_idx = race_to_row_indices(validate_idx, meta.race_boundaries)
+        eval_row_idx = race_to_row_indices(eval_idx, meta.race_boundaries)
+
         # Create subset datasets
-        train_dataset = torch.utils.data.Subset(dataset, train_idx)
-        val_dataset = torch.utils.data.Subset(dataset, validate_idx)
-        eval_dataset = torch.utils.data.Subset(dataset, eval_idx)
-        test_dataset = torch.utils.data.Subset(dataset, test_idx)
+        train_dataset = torch.utils.data.Subset(dataset, train_row_idx)
+        val_dataset = torch.utils.data.Subset(dataset, validate_row_idx)
+        eval_dataset = torch.utils.data.Subset(dataset, eval_row_idx)
+        test_dataset = torch.utils.data.Subset(dataset, validate_row_idx + eval_row_idx)
 
         # Create dataloaders
         batch_size = config.batch_size
