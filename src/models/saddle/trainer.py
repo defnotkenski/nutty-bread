@@ -155,23 +155,11 @@ class ModelTrainer:
         preprocessed = encode_to_tensors(labeled_df, fmap, train_race_indices=train_idx)
         dataset = SaddleDataset(preprocessed)
 
-        def race_to_row_indices(race_indices, race_boundaries):
-            row_indices = []
-            for r in race_indices:
-                s, e = race_boundaries[r]
-                row_indices.extend(range(s, e))
-
-            return row_indices
-
-        train_row_idx = race_to_row_indices(train_idx, meta.race_boundaries)
-        validate_row_idx = race_to_row_indices(validate_idx, meta.race_boundaries)
-        eval_row_idx = race_to_row_indices(eval_idx, meta.race_boundaries)
-
-        # Create subset datasets
-        train_dataset = torch.utils.data.Subset(dataset, train_row_idx)
-        val_dataset = torch.utils.data.Subset(dataset, validate_row_idx)
-        eval_dataset = torch.utils.data.Subset(dataset, eval_row_idx)
-        test_dataset = torch.utils.data.Subset(dataset, validate_row_idx + eval_row_idx)
+        # Create subset datasets by race index (not row index)
+        train_dataset = torch.utils.data.Subset(dataset, train_idx)
+        val_dataset = torch.utils.data.Subset(dataset, validate_idx)
+        eval_dataset = torch.utils.data.Subset(dataset, eval_idx)
+        test_dataset = torch.utils.data.Subset(dataset, validate_idx + eval_idx)
 
         # Create dataloaders
         batch_size = config.batch_size
